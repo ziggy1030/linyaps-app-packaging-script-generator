@@ -223,29 +223,61 @@ build_pak() {
   # 解压deb包
   dpkg -x "${src_path}" "${binary_tmp_dir}/"
   
-  # 创建binary目录
+  # 创建binary目录结构
+  # binary/ 目录的内容会复制到 files/ 根目录
+  # files/ 映射到 /usr/，所以 files/bin/ -> /usr/bin/
   mkdir -p "${binary_dir}"
   
-  # 复制应用文件（根据实际deb结构调整路径）
-  # 示例：VSCode的结构是 /usr/share/code/
-  rsync -avrP "${binary_tmp_dir}/${binary_path}/" "${binary_dir}/"
+  # 处理 deb 中的文件路径转换
+  # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
+  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下作为未归类目录
+  #    例如：/opt/uTools/ -> binary/uTools/ (去掉 opt/ 层级)
   
-  # 创建bin目录并处理二进制软链（使用相对路径）
-  # 参考 dependency_fixer.py 的实现：进入目标目录后创建相对路径软链
-  mkdir -p "${binary_dir}/bin"
-  
-  # 进入bin目录，创建相对路径软链
-  cd "${binary_dir}/bin"
-  
-  # 查找可执行文件并创建相对路径软链
-  # 例如：将 ../code 软链到 bin/code
-  if [ -f "${binary_dir}/${binary_name}" ]; then
-    # 计算相对路径（从 bin/ 目录到上级目录的可执行文件）
-    rel_path="../${binary_name}"
-    ln -sf "${rel_path}" "${binary_name}"
+  # 复制 /usr/ 下的标准目录
+  if [ -d "${binary_tmp_dir}/usr" ]; then
+    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
   fi
   
-  cd "${build_tmp_dir}"
+  # 处理非标准路径（/opt、/var 等）
+  # 将其内容直接放到 binary/ 根目录下
+  for non_std_dir in opt var srv; do
+    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
+      # 遍历该目录下的子目录，直接复制到 binary/ 根目录
+      for subdir in "${binary_tmp_dir}/${non_std_dir}"/*; do
+        if [ -d "${subdir}" ]; then
+          subdir_name=$(basename "${subdir}")
+          rsync -avrP "${subdir}/" "${binary_dir}/${subdir_name}/"
+        fi
+      done
+    fi
+  done
+  
+  # 创建 bin/ 目录用于存放可执行文件软链
+  mkdir -p "${binary_dir}/bin"
+  
+  # 处理二进制文件软链
+  # 在 files/bin/ 创建软链，指向实际二进制文件
+  if [ -n "${binary_name}" ]; then
+    # 在 binary/ 目录下查找二进制文件
+    actual_binary=$(find "${binary_dir}" -type f -name "${binary_name}" -executable 2>/dev/null | head -n 1)
+    
+    if [ -n "${actual_binary}" ]; then
+      # 计算相对于 files/bin/ 的路径
+      # actual_binary 示例: /path/to/binary/uTools/utools
+      # binary_dir 示例: /path/to/binary/
+      # rel_binary 示例: uTools/utools
+      rel_binary="${actual_binary#${binary_dir}}"
+      
+      # 计算从 bin/ 到实际二进制的相对路径
+      # 例如：bin/ -> ../uTools/utools
+      cd "${binary_dir}/bin"
+      ln -sf "../${rel_binary}" "${binary_name}"
+      echo "Created symlink: bin/${binary_name} -> ../${rel_binary}"
+      cd "${build_tmp_dir}"
+    else
+      echo "Warning: Binary '${binary_name}' not found in ${binary_dir}"
+    fi
+  fi
 
   ## Building & Exporting
   ll-builder build --skip-output-check

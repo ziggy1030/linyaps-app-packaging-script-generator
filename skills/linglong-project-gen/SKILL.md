@@ -69,9 +69,19 @@ command:
   - "${command}"
 
 build: |
-  mkdir -p ${prefix}/share/
+  # files/ 映射到 /usr/ 目录
+  # files/bin/ -> /usr/bin/
+  # files/share/ -> /usr/share/
+  # files/lib/ -> /usr/lib/
+  # 非 /usr 标准路径（如 /opt/uTools/）直接放到 files/ 下作为未归类目录
+  mkdir -p ${prefix}/bin/ ${prefix}/share/ ${prefix}/lib/
+  
+  # 复制应用文件到 ${prefix}/ (files/) 根目录
+  # pak_linyaps.sh 已处理路径转换：/opt/uTools/ -> files/uTools/
+  cp -rf /project/binary/* ${prefix}/
+  
+  # 复制桌面文件、图标等资源
   cp -rf /project/files_res/* ${prefix}/
-  # 注意：bin目录和二进制软链由 pak_linyaps.sh 在构建时处理
 ```
 
 ### 3. 生成 pak_linyaps.sh
@@ -184,25 +194,43 @@ build_pak() {
   # 解压deb包
   dpkg -x "${src_path}" "${binary_tmp_dir}/"
   
-  # 创建binary目录
+  # 创建binary目录结构
   mkdir -p "${binary_dir}"
   
-  # 复制应用文件（根据实际deb结构调整路径）
-  rsync -avrP "${binary_tmp_dir}/${binary_path}/" "${binary_dir}/"
-  
-  # 创建bin目录并处理二进制软链（使用相对路径）
-  mkdir -p "${binary_dir}/bin"
-  
-  # 进入bin目录，创建相对路径软链
-  cd "${binary_dir}/bin"
-  
-  # 查找可执行文件并创建相对路径软链
-  if [ -f "${binary_dir}/${binary_name}" ]; then
-    rel_path="../${binary_name}"
-    ln -sf "${rel_path}" "${binary_name}"
+  # 处理 deb 中的文件路径转换
+  # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
+  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下
+  if [ -d "${binary_tmp_dir}/usr" ]; then
+    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
   fi
   
-  cd "${build_tmp_dir}"
+  # 处理非标准路径（/opt、/var 等）
+  for non_std_dir in opt var srv; do
+    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
+      for subdir in "${binary_tmp_dir}/${non_std_dir}"/*; do
+        if [ -d "${subdir}" ]; then
+          subdir_name=$(basename "${subdir}")
+          rsync -avrP "${subdir}/" "${binary_dir}/${subdir_name}/"
+        fi
+      done
+    fi
+  done
+  
+  # 创建 bin/ 目录用于存放可执行文件软链
+  mkdir -p "${binary_dir}/bin"
+  
+  # 处理二进制文件软链
+  if [ -n "${binary_name}" ]; then
+    actual_binary=$(find "${binary_dir}" -type f -name "${binary_name}" -executable 2>/dev/null | head -n 1)
+    
+    if [ -n "${actual_binary}" ]; then
+      rel_binary="${actual_binary#${binary_dir}}"
+      
+      cd "${binary_dir}/bin"
+      ln -sf "../${rel_binary}" "${binary_name}"
+      cd "${build_tmp_dir}"
+    fi
+  fi
 
   ll-builder build --skip-output-check
   building_status=$?
@@ -276,6 +304,13 @@ with open('config/packages.csv', 'r') as f:
 | `${push}` | CSV配置 | 是否自动推送 |
 | `${command}` | desktop Exec | 启动命令（相对路径，如 `code`） |
 | `${depends}` | deb Depends | 运行时依赖 |
+| `${binary_name}` | CSV配置 | 二进制文件名（如 `utools`），用于创建软链 |
+
+**binary_path 最佳实践：**
+- `binary_path` 已废弃，新版本自动保持 deb 原有目录结构
+- deb 中的 `/opt/uTools/` → `files/opt/uTools/`
+- deb 中的 `/usr/share/code/` → `files/usr/share/code/`
+- 二进制软链自动创建在 `files/bin/`，指向实际二进制文件
 
 ## 命令行参数说明
 
@@ -311,7 +346,37 @@ CI_ll_<package_id>/
 
 ## 二进制软链处理
 
-`pak_linyaps.sh` 在构建时需要处理二进制软链，**使用相对路径**：
+`pak_linyaps.sh` 在构建时需要处理二进制软链，**使用相对路径**。
+
+**目录结构说明：**
+- `files/` 映射到玲瓏容器内的 `/usr/` 目录
+- `files/bin/` → `/usr/bin/` (存放可执行文件软链)
+- `files/share/` → `/usr/share/` (存放桌面文件、图标等)
+- `files/lib/` → `/usr/lib/` (存放库文件)
+- deb 中的非标准路径（如 `/opt/uTools/`）直接放到 `files/` 下作为未归类目录
+
+**路径转换示例：**
+```
+deb 结构                    binary/ 结构              files/ 结构 (容器内 /usr/)
+/opt/uTools/utools    →    uTools/utools       →    /usr/uTools/utools
+/opt/uTools/resources →    uTools/resources    →    /usr/uTools/resources
+/usr/bin/code         →    bin/code            →    /usr/bin/code
+/usr/share/code/      →    share/code/         →    /usr/share/code/
+```
+
+**最终目录结构：**
+```
+files/
+├── bin/
+│   └── utools -> ../uTools/utools  # 软链指向实际二进制
+├── share/
+│   ├── applications/
+│   └── icons/
+├── lib/
+└── uTools/          # 原 /opt/uTools/ 直接放到 files/ 下
+    ├── utools       # 实际二进制文件
+    └── resources/
+```
 
 ```bash
 build_pak() {
@@ -321,35 +386,55 @@ build_pak() {
   # 解压deb包
   dpkg -x "${src_path}" "${binary_tmp_dir}/"
   
-  # 创建binary目录
+  # 创建binary目录结构
   mkdir -p "${binary_dir}"
   
-  # 复制应用文件（根据实际deb结构调整路径）
-  rsync -avrP "${binary_tmp_dir}/${binary_path}/" "${binary_dir}/"
+  # 处理 deb 中的文件路径转换
+  # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
+  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下
+  #    例如：/opt/uTools/ -> binary/uTools/ (去掉 opt/ 层级)
   
-  # 创建bin目录并处理二进制软链（使用相对路径）
-  # 参考 dependency_fixer.py 的实现：进入目标目录后创建相对路径软链
-  mkdir -p "${binary_dir}/bin"
-  
-  # 进入bin目录，创建相对路径软链
-  cd "${binary_dir}/bin"
-  
-  # 查找可执行文件并创建相对路径软链
-  # 例如：将 ../code 软链到 bin/code
-  if [ -f "${binary_dir}/${binary_name}" ]; then
-    # 计算相对路径（从 bin/ 目录到上级目录的可执行文件）
-    rel_path="../${binary_name}"
-    ln -sf "${rel_path}" "${binary_name}"
+  # 复制 /usr/ 下的标准目录
+  if [ -d "${binary_tmp_dir}/usr" ]; then
+    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
   fi
   
-  cd "${build_tmp_dir}"
+  # 处理非标准路径（/opt、/var 等）
+  for non_std_dir in opt var srv; do
+    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
+      for subdir in "${binary_tmp_dir}/${non_std_dir}"/*; do
+        if [ -d "${subdir}" ]; then
+          subdir_name=$(basename "${subdir}")
+          rsync -avrP "${subdir}/" "${binary_dir}/${subdir_name}/"
+        fi
+      done
+    fi
+  done
+  
+  # 创建 bin/ 目录用于存放可执行文件软链
+  mkdir -p "${binary_dir}/bin"
+  
+  # 处理二进制文件软链
+  if [ -n "${binary_name}" ]; then
+    actual_binary=$(find "${binary_dir}" -type f -name "${binary_name}" -executable 2>/dev/null | head -n 1)
+    
+    if [ -n "${actual_binary}" ]; then
+      rel_binary="${actual_binary#${binary_dir}}"
+      
+      cd "${binary_dir}/bin"
+      ln -sf "../${rel_binary}" "${binary_name}"
+      echo "Created symlink: bin/${binary_name} -> ../${rel_binary}"
+      cd "${build_tmp_dir}"
+    fi
+  fi
 }
 ```
 
 **关键点：**
-- 进入目标目录 (`cd "${binary_dir}/bin"`) 后创建软链
-- 使用相对路径（如 `../${binary_name}`）而非绝对路径
-- 这样确保软链在玲珑容器内仍然有效
+- `files/` 映射到 `/usr/`，不包含 `/opt`、`/var` 等目录
+- 非 `/usr` 标准路径的内容直接放到 `files/` 根目录下
+- `files/bin/` 只存放软链，实际应用文件存放在 `files/` 的其他子目录
+- 软链使用相对路径（如 `../uTools/utools`），确保在玲瓏容器内正确解析
 ```
 
 ## 注意事项
@@ -364,3 +449,4 @@ build_pak() {
 8. 解压后可能目录命名方式不符合Linux规范，存在空格等需要额外转译的类型，需要在pak_linux设定修改为不需要转译的路径格式
 9. **构建缓存目录可通过 `--build_tmp_dir` 参数指定，未指定时使用系统临时目录**
 10. **自定义构建缓存目录时，目录不存在会自动创建；清理行为由 `auto_clean` 参数控制**
+11. **files/ 映射到 /usr/**：`files/bin/` → `/usr/bin/`，非标准路径（如 `/opt/`）的内容直接放到 `files/` 根目录下

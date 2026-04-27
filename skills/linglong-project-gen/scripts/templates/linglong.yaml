@@ -32,7 +32,16 @@ command:
 
 build: |
   ##Extract res
-  mkdir -p ${prefix}/bin/ ${prefix}/share/
-  # 注意：binary 目录由 pak_linyaps.sh 在构建前准备好，包含已处理相对路径的二进制文件
-  cp -rf /project/binary/* ${prefix}/bin/
+  # files/ 映射到 /usr/ 目录
+  # files/bin/ -> /usr/bin/
+  # files/share/ -> /usr/share/
+  # files/lib/ -> /usr/lib/
+  # 非 /usr 标准路径（如 /opt/uTools/）直接放到 files/ 下作为未归类目录
+  mkdir -p ${prefix}/bin/ ${prefix}/share/ ${prefix}/lib/
+  
+  # 复制应用文件到 ${prefix}/ (files/) 根目录
+  # pak_linyaps.sh 已处理路径转换：/opt/uTools/ -> files/uTools/
+  cp -rf /project/binary/* ${prefix}/
+  
+  # 复制桌面文件、图标等资源
   cp -rf /project/files_res/* ${prefix}/
