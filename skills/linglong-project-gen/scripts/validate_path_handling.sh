@@ -95,52 +95,23 @@ create_test_structure() {
     log_info "测试目录结构创建完成"
 }
 
-# 模拟 pak_linyaps.sh 的路径处理逻辑
+# 调用实际的路径处理脚本
 process_paths() {
     local src_dir="$1"
     local dest_dir="$2"
     
-    log_info "开始处理路径转换..."
+    log_info "调用 handle_special_paths.sh 处理路径转换..."
     
-    mkdir -p "${dest_dir}"
+    # 获取脚本所在目录
+    local script_dir="$(dirname "$(readlink -f "$0")")"
     
-    # 处理 /usr/ 下的标准目录
-    if [ -d "${src_dir}/usr" ]; then
-        log_info "处理 /usr/ 目录..."
-        # 使用 cp -r 替代 rsync
-        if [ -d "${src_dir}/usr/bin" ]; then
-            mkdir -p "${dest_dir}/bin"
-            cp -r "${src_dir}/usr/bin/"* "${dest_dir}/bin/" 2>/dev/null || true
-        fi
+    # 调用独立的路径处理脚本
+    if [ -f "${script_dir}/handle_special_paths.sh" ]; then
+        "${script_dir}/handle_special_paths.sh" "${src_dir}" "${dest_dir}" --verbose
+    else
+        log_error "找不到 handle_special_paths.sh 脚本"
+        exit 1
     fi
-    
-    # 处理非标准路径（/opt、/var 等）
-    for non_std_dir in opt var srv; do
-        if [ -d "${src_dir}/${non_std_dir}" ]; then
-            log_info "处理 /${non_std_dir}/ 目录..."
-            # 使用 find 来处理包含特殊字符的文件名
-            find "${src_dir}/${non_std_dir}" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r subdir; do
-                if [ -d "${subdir}" ]; then
-                    subdir_name=$(basename "${subdir}")
-                    log_info "  处理子目录: ${subdir_name}"
-                    
-                    # 检查是否包含特殊字符
-                    if [[ "${subdir_name}" =~ [[:space:]] ]]; then
-                        log_warning "  检测到空格字符: ${subdir_name}"
-                    fi
-                    if [[ "${subdir_name}" =~ [\(\)\&\@\#\$] ]]; then
-                        log_warning "  检测到特殊字符: ${subdir_name}"
-                    fi
-                    
-                    # 使用 cp -r 替代 rsync，使用引号保护路径
-                    mkdir -p "${dest_dir}/${subdir_name}"
-                    cp -r "${subdir}/." "${dest_dir}/${subdir_name}/" 2>/dev/null || true
-                fi
-            done
-        fi
-    done
-    
-    log_info "路径转换完成"
 }
 
 # 验证路径处理结果
@@ -162,31 +133,31 @@ verify_results() {
         log_info "  文件: ${file}"
     done
     
-    # 测试 1: 验证空格目录是否正确处理
+    # 测试 1: 验证空格目录是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/My App" ]; then
-        log_success "空格目录 'My App' 处理正确"
+    if [ -d "${dest_dir}/My_App" ]; then
+        log_success "空格目录 'My App' 已标准化为 'My_App'"
     else
-        log_error "空格目录 'My App' 处理失败"
+        log_error "空格目录 'My App' 标准化失败"
     fi
     
     # 测试 2: 验证可执行文件是否保留
     ((TOTAL_TESTS++))
-    if [ -x "${dest_dir}/My App/myapp" ]; then
+    if [ -x "${dest_dir}/My_App/myapp" ]; then
         log_success "可执行文件 'myapp' 权限正确"
     else
         log_error "可执行文件 'myapp' 权限错误或文件不存在"
     fi
     
-    # 测试 3: 验证括号目录
+    # 测试 3: 验证括号目录是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/App (x86_64)" ]; then
-        log_success "括号目录 'App (x86_64)' 处理正确"
+    if [ -d "${dest_dir}/App_x86_64" ]; then
+        log_success "括号目录 'App (x86_64)' 已标准化为 'App_x86_64'"
     else
-        log_error "括号目录 'App (x86_64)' 处理失败"
+        log_error "括号目录 'App (x86_64)' 标准化失败"
     fi
     
-    # 测试 4: 验证中文目录
+    # 测试 4: 验证中文目录（中文不标准化）
     ((TOTAL_TESTS++))
     if [ -d "${dest_dir}/我的应用" ]; then
         log_success "中文目录 '我的应用' 处理正确"
@@ -194,52 +165,60 @@ verify_results() {
         log_error "中文目录 '我的应用' 处理失败"
     fi
     
-    # 测试 5: 验证多个空格
+    # 测试 5: 验证多个空格是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/App  With  Spaces" ]; then
-        log_success "多空格目录 'App  With  Spaces' 处理正确"
+    if [ -d "${dest_dir}/App_With_Spaces" ]; then
+        log_success "多空格目录 'App  With  Spaces' 已标准化为 'App_With_Spaces'"
     else
-        log_error "多空格目录 'App  With  Spaces' 处理失败"
+        log_error "多空格目录 'App  With  Spaces' 标准化失败"
     fi
     
-    # 测试 6: 验证 & 符号
+    # 测试 6: 验证 & 符号是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/App&Co" ]; then
-        log_success "特殊字符目录 'App&Co' 处理正确"
+    if [ -d "${dest_dir}/App_and_Co" ]; then
+        log_success "特殊字符目录 'App&Co' 已标准化为 'App_and_Co'"
     else
-        log_error "特殊字符目录 'App&Co' 处理失败"
+        log_error "特殊字符目录 'App&Co' 标准化失败"
     fi
     
-    # 测试 7: 验证 @ 符号
+    # 测试 7: 验证 @ 符号是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/app@latest" ]; then
-        log_success "特殊字符目录 'app@latest' 处理正确"
+    if [ -d "${dest_dir}/app_at_latest" ]; then
+        log_success "特殊字符目录 'app@latest' 已标准化为 'app_at_latest'"
     else
-        log_error "特殊字符目录 'app@latest' 处理失败"
+        log_error "特殊字符目录 'app@latest' 标准化失败"
     fi
     
-    # 测试 8: 验证 # 符号
+    # 测试 8: 验证 # 符号是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/app-v1.0#stable" ]; then
-        log_success "特殊字符目录 'app-v1.0#stable' 处理正确"
+    if [ -d "${dest_dir}/app-v1.0_hash_stable" ]; then
+        log_success "特殊字符目录 'app-v1.0#stable' 已标准化为 'app-v1.0_hash_stable'"
     else
-        log_error "特殊字符目录 'app-v1.0#stable' 处理失败"
+        log_error "特殊字符目录 'app-v1.0#stable' 标准化失败"
     fi
     
-    # 测试 9: 验证 $ 符号
+    # 测试 9: 验证 $ 符号是否被标准化
     ((TOTAL_TESTS++))
-    if [ -d "${dest_dir}/app\$special" ]; then
-        log_success "特殊字符目录 'app\$special' 处理正确"
+    if [ -d "${dest_dir}/app_dollar_special" ]; then
+        log_success "特殊字符目录 'app\$special' 已标准化为 'app_dollar_special'"
     else
-        log_error "特殊字符目录 'app\$special' 处理失败"
+        log_error "特殊字符目录 'app\$special' 标准化失败"
     fi
     
-    # 测试 10: 验证文件名中的空格
+    # 测试 10: 验证文件名中的空格（文件名不标准化，只标准化目录名）
     ((TOTAL_TESTS++))
     if [ -f "${dest_dir}/TestApp/my binary" ]; then
-        log_success "空格文件名 'my binary' 处理正确"
+        log_success "空格文件名 'my binary' 处理正确（文件名不标准化）"
     else
         log_error "空格文件名 'my binary' 处理失败"
+    fi
+    
+    # 测试 11: 验证路径映射文件是否生成
+    ((TOTAL_TESTS++))
+    if [ -f "${dest_dir}/.path_mapping" ]; then
+        log_success "路径映射文件 '.path_mapping' 已生成"
+    else
+        log_error "路径映射文件 '.path_mapping' 未生成"
     fi
 }
 
@@ -252,14 +231,15 @@ test_symlink_creation() {
     
     mkdir -p "${dest_dir}/bin"
     
-    # 测试：为包含空格的目录中的二进制创建软链
-    local binary_path="${dest_dir}/My App/myapp"
+    # 测试：为标准化后的目录中的二进制创建软链
+    # 注意：现在使用标准化后的路径 My_App 而不是 My App
+    local binary_path="${dest_dir}/My_App/myapp"
     if [ -f "${binary_path}" ]; then
         cd "${dest_dir}/bin"
-        ln -sf "../My App/myapp" "myapp" 2>/dev/null
+        ln -sf "../My_App/myapp" "myapp" 2>/dev/null
         
         if [ -L "myapp" ]; then
-            log_success "软链创建成功: bin/myapp -> ../My App/myapp"
+            log_success "软链创建成功: bin/myapp -> ../My_App/myapp"
         else
             log_error "软链创建失败"
         fi

@@ -27,6 +27,11 @@ argument-hint: '包ID和配置信息'
 # 例如: com.visualstudio.code -> CI_ll_com.visualstudio.code
 project_dir="CI_ll_${package_id}"
 mkdir -p "${project_dir}/templates/files_res"
+mkdir -p "${project_dir}/scripts"
+
+# 拷贝辅助脚本
+cp "scripts/handle_special_paths.sh" "${project_dir}/scripts/"
+chmod +x "${project_dir}/scripts/handle_special_paths.sh"
 # 注意：不创建 src/ 目录，deb文件路径由用户执行脚本时指定
 ```
 
@@ -195,32 +200,28 @@ build_pak() {
   dpkg -x "${src_path}" "${binary_tmp_dir}/"
   
   # 创建binary目录结构
+  # binary/ 目录的内容会复制到 files/ 根目录
+  # files/ 映射到 /usr/，所以 files/bin/ -> /usr/bin/
   mkdir -p "${binary_dir}"
   
-  # 处理 deb 中的文件路径转换
+  # 调用特殊路径处理脚本
+  # 处理 deb 中的文件路径转换，包括：
   # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
-  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下
-  if [ -d "${binary_tmp_dir}/usr" ]; then
-    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
-  fi
-  
-  # 处理非标准路径（/opt、/var 等）
-  for non_std_dir in opt var srv; do
-    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
-      for subdir in "${binary_tmp_dir}/${non_std_dir}"/*; do
-        if [ -d "${subdir}" ]; then
-          subdir_name=$(basename "${subdir}")
-          rsync -avrP "${subdir}/" "${binary_dir}/${subdir_name}/"
-        fi
-      done
-    fi
-  done
+  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下作为未归类目录
+  #    例如：/opt/uTools/ -> binary/uTools/ (去掉 opt/ 层级)
+  # 3. 支持包含空格、括号、中文、&、@、#、$ 等特殊字符的路径
+  # 注意：此操作必须在所有软链动作之前完成，否则软链关系将被破坏
+  "${project_root}/scripts/handle_special_paths.sh" "${binary_tmp_dir}" "${binary_dir}"
   
   # 创建 bin/ 目录用于存放可执行文件软链
+  # 注意：此操作必须在特殊路径处理完成之后进行
   mkdir -p "${binary_dir}/bin"
   
   # 处理二进制文件软链
+  # 在 files/bin/ 创建软链，指向实际二进制文件
+  # 注意：此操作必须在所有文件复制和路径处理完成之后进行
   if [ -n "${binary_name}" ]; then
+    # 在 binary/ 目录下查找二进制文件
     actual_binary=$(find "${binary_dir}" -type f -name "${binary_name}" -executable 2>/dev/null | head -n 1)
     
     if [ -n "${actual_binary}" ]; then
@@ -331,10 +332,12 @@ with open('config/packages.csv', 'r') as f:
 
 ```
 CI_ll_<package_id>/
-├── pak_linyaps.sh          # 打包脚本
+├── pak_linyaps.sh              # 打包脚本
+├── scripts/                    # 辅助脚本目录
+│   └── handle_special_paths.sh # 特殊路径处理脚本
 └── templates/
-    ├── linglong.yaml       # 玲珑配置模板
-    └── files_res/          # 资源文件目录
+    ├── linglong.yaml           # 玲珑配置模板
+    └── files_res/              # 资源文件目录
         └── share/
             ├── applications/
             ├── icons/
@@ -387,35 +390,28 @@ build_pak() {
   dpkg -x "${src_path}" "${binary_tmp_dir}/"
   
   # 创建binary目录结构
+  # binary/ 目录的内容会复制到 files/ 根目录
+  # files/ 映射到 /usr/，所以 files/bin/ -> /usr/bin/
   mkdir -p "${binary_dir}"
   
-  # 处理 deb 中的文件路径转换
+  # 调用特殊路径处理脚本
+  # 处理 deb 中的文件路径转换，包括：
   # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
-  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下
+  # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下作为未归类目录
   #    例如：/opt/uTools/ -> binary/uTools/ (去掉 opt/ 层级)
-  
-  # 复制 /usr/ 下的标准目录
-  if [ -d "${binary_tmp_dir}/usr" ]; then
-    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
-  fi
-  
-  # 处理非标准路径（/opt、/var 等）
-  for non_std_dir in opt var srv; do
-    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
-      for subdir in "${binary_tmp_dir}/${non_std_dir}"/*; do
-        if [ -d "${subdir}" ]; then
-          subdir_name=$(basename "${subdir}")
-          rsync -avrP "${subdir}/" "${binary_dir}/${subdir_name}/"
-        fi
-      done
-    fi
-  done
+  # 3. 支持包含空格、括号、中文、&、@、#、$ 等特殊字符的路径
+  # 注意：此操作必须在所有软链动作之前完成，否则软链关系将被破坏
+  "${project_root}/scripts/handle_special_paths.sh" "${binary_tmp_dir}" "${binary_dir}"
   
   # 创建 bin/ 目录用于存放可执行文件软链
+  # 注意：此操作必须在特殊路径处理完成之后进行
   mkdir -p "${binary_dir}/bin"
   
   # 处理二进制文件软链
+  # 在 files/bin/ 创建软链，指向实际二进制文件
+  # 注意：此操作必须在所有文件复制和路径处理完成之后进行
   if [ -n "${binary_name}" ]; then
+    # 在 binary/ 目录下查找二进制文件
     actual_binary=$(find "${binary_dir}" -type f -name "${binary_name}" -executable 2>/dev/null | head -n 1)
     
     if [ -n "${actual_binary}" ]; then

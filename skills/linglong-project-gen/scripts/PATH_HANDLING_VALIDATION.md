@@ -2,7 +2,62 @@
 
 ## 概述
 
-`validate_path_handling.sh` 是一個用於驗證玲瓏打包腳本中特殊格式路徑處理邏輯的驗證工具。該腳本模擬了 deb 包解壓後可能出現的各種特殊字符路徑場景，並驗證 `pak_linyaps.sh` 的路徑處理邏輯是否能正確處理這些情況。
+本目錄包含兩個相關的腳本：
+
+1. **`handle_special_paths.sh`** - 獨立的特殊路徑處理腳本，用於處理 deb 包解壓後包含特殊字符路徑的轉換邏輯
+2. **`validate_path_handling.sh`** - 驗證工具，用於測試特殊路徑處理邏輯的正確性
+
+### 腳本關係
+
+```
+pak_linyaps.sh (主構建腳本)
+    └── 調用 handle_special_paths.sh (路徑處理)
+            └── 被 validate_path_handling.sh 測試
+```
+
+## handle_special_paths.sh
+
+### 功能
+
+處理 deb 包解壓後的文件路徑轉換，包括：
+
+1. 處理 `/usr/` 下的標準目錄
+2. 處理 `/opt/`、`/var/`、`/srv/` 等非標準路徑
+3. 支持包含空格、括號、中文、&、@、#、$ 等特殊字符的路徑
+
+### 用法
+
+```bash
+# 基本用法
+./handle_special_paths.sh <src_dir> <dest_dir>
+
+# 顯示詳細日誌
+./handle_special_paths.sh <src_dir> <dest_dir> --verbose
+```
+
+### 參數說明
+
+| 參數 | 說明 |
+|------|------|
+| `src_dir` | deb 包解壓後的源目錄 |
+| `dest_dir` | 目標目錄 |
+| `--verbose` | 可選，顯示詳細日誌 |
+
+### 集成方式
+
+在 `pak_linyaps.sh` 中，解壓 deb 包後自動調用：
+
+```bash
+# 解压deb包
+dpkg -x "${src_path}" "${binary_tmp_dir}/"
+
+# 调用特殊路径处理脚本
+"${project_root}/scripts/handle_special_paths.sh" "${binary_tmp_dir}" "${binary_dir}"
+```
+
+## validate_path_handling.sh
+
+該腳本用於驗證玲瓏打包腳本中特殊格式路徑處理邏輯的正確性。它調用 `handle_special_paths.sh` 進行實際處理，並驗證結果。
 
 ## 測試場景
 
@@ -84,14 +139,14 @@
 
 ### 特殊字符處理
 
-腳本使用以下技術處理特殊字符：
+`handle_special_paths.sh` 使用以下技術處理特殊字符：
 
 1. **使用 `find` 命令** - 正確處理包含特殊字符的文件名
 2. **使用 `IFS=` 和 `-r` 選項** - 防止 shell 對特殊字符進行解釋
 3. **使用引號保護** - 確保路徑中的空格和特殊字符被正確傳遞
 
 ```bash
-# 正確的處理方式
+# 正確的處理方式（在 handle_special_paths.sh 中）
 find "${src_dir}/${non_std_dir}" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r subdir; do
     subdir_name=$(basename "${subdir}")
     mkdir -p "${dest_dir}/${subdir_name}"
@@ -137,13 +192,21 @@ ln -sf "../My App/myapp" "myapp"
 
 ## 相關文件
 
-- `pak_linyaps.sh` - 實際的打包腳本
+- `handle_special_paths.sh` - 獨立的特殊路徑處理腳本
+- `pak_linyaps.sh` - 主構建腳本，自動調用 `handle_special_paths.sh`
+- `validate_path_handling.sh` - 測試驗證腳本
 - `SKILL.md` - 玲瓏工程生成技能文檔
 - `linglong.yaml` - 玲瓏配置文件模板
 
 ## 更新日誌
 
-### 2026-04-27
+### 2026-04-27 (v2)
+- **重構**: 將路徑處理邏輯提取為獨立的 `handle_special_paths.sh` 腳本
+- **集成**: `pak_linyaps.sh` 現在自動調用 `handle_special_paths.sh`
+- **優化**: 避免智能體忽略路徑處理步驟的問題
+- **改進**: 確保軟鏈創建在路徑處理完成後執行
+
+### 2026-04-27 (v1)
 - 創建初始版本
 - 支持 10 種特殊字符路徑測試場景
 - 添加軟鏈創建測試

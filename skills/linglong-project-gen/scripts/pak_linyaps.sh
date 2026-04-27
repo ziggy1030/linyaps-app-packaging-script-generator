@@ -228,32 +228,14 @@ build_pak() {
   # files/ 映射到 /usr/，所以 files/bin/ -> /usr/bin/
   mkdir -p "${binary_dir}"
   
-  # 处理 deb 中的文件路径转换
+  # 调用特殊路径处理脚本
+  # 处理 deb 中的文件路径转换，包括：
   # 1. /usr/ 下的内容直接复制到 binary/ (对应 files/)
   # 2. 非 /usr 标准路径（如 /opt/uTools/）直接放到 binary/ 下作为未归类目录
   #    例如：/opt/uTools/ -> binary/uTools/ (去掉 opt/ 层级)
-  
-  # 复制 /usr/ 下的标准目录
-  if [ -d "${binary_tmp_dir}/usr" ]; then
-    rsync -avrP "${binary_tmp_dir}/usr/" "${binary_dir}/" --exclude='share' --exclude='lib'
-  fi
-  
-  # 处理非标准路径（/opt、/var 等）
-  # 将其内容直接放到 binary/ 根目录下
-  # 使用 find + IFS= read -r 组合正确处理特殊字符路径（空格、括号、中文等）
+  # 3. 支持包含空格、括号、中文、&、@、#、$ 等特殊字符的路径
   # 注意：此操作必须在所有软链动作之前完成，否则软链关系将被破坏
-  for non_std_dir in opt var srv; do
-    if [ -d "${binary_tmp_dir}/${non_std_dir}" ]; then
-      # 使用 find 命令遍历目录，避免 shell glob 的问题
-      find "${binary_tmp_dir}/${non_std_dir}" -mindepth 1 -maxdepth 1 -type d | while IFS= read -r subdir; do
-        if [ -d "${subdir}" ]; then
-          subdir_name=$(basename "${subdir}")
-          mkdir -p "${binary_dir}/${subdir_name}"
-          cp -r "${subdir}/." "${binary_dir}/${subdir_name}/"
-        fi
-      done
-    fi
-  done
+  "${project_root}/scripts/handle_special_paths.sh" "${binary_tmp_dir}" "${binary_dir}"
   
   # 创建 bin/ 目录用于存放可执行文件软链
   # 注意：此操作必须在特殊路径处理完成之后进行
