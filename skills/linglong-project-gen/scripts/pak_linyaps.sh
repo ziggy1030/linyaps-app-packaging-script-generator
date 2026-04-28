@@ -205,6 +205,10 @@ build_dir_init() {
 	cp -rf "${project_root}/templates/files_res" \
 		"${build_tmp_dir}"
 
+	## 复制脚本到构建目录，供 linglong.yaml build 阶段使用
+	mkdir -p "${build_tmp_dir}/scripts"
+	cp -f "${project_root}/scripts/"*.sh "${build_tmp_dir}/scripts/"
+
 	## Generate linyaps res
 	## Envs for linglong.yaml
 	export prefix="\$PREFIX"
@@ -269,6 +273,11 @@ build_pak() {
 			echo "Warning: Binary '${binary_name}' not found in ${binary_dir}"
 		fi
 	fi
+
+	# 去重 desktop 文件
+	# 在 files_res 复制到 files 目录后，对重复的 desktop 文件进行去重
+	# 避免相同内容的 desktop 文件重复打包
+	"${project_root}/scripts/dedup_desktop_files.sh" "${build_tmp_dir}/files_res"
 
 	## Building & Exporting
 	ll-builder build --skip-output-check
