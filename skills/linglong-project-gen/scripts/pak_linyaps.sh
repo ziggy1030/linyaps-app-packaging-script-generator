@@ -274,8 +274,15 @@ build_pak() {
 		fi
 	fi
 
-	# 去重 desktop 文件
-	# 在 files_res 复制到 files 目录后，对重复的 desktop 文件进行去重
+	# 第一步去重：删除 binary/ 中与 files_res/ 内容重复的 desktop 文件
+	# 在 ll-builder build 之前执行，避免重复文件进入最终包
+	# 参数说明：
+	#   - 第一个参数：待去重的目标目录 (binary/)
+	#   - --reference-dir：参考目录 (files_res/)
+	# 效果：删除 binary/ 中与 files_res/ 内容相同的 desktop 文件
+	"${project_root}/scripts/dedup_desktop_files.sh" "${build_tmp_dir}/binary" --reference-dir "${build_tmp_dir}/files_res"
+
+	# 第二步去重：对 files_res/ 内部的 desktop 文件进行去重（保底检测）
 	# 避免相同内容的 desktop 文件重复打包
 	"${project_root}/scripts/dedup_desktop_files.sh" "${build_tmp_dir}/files_res"
 

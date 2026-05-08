@@ -1,23 +1,34 @@
 #!/bin/bash
 # Desktop 文件去重脚本
-# 用于去除 files_res/share/applications/ 目录下相同内容的 desktop 文件
+# 用于去除 share/applications/ 目录下相同 Exec 命令的 desktop 文件
 #
 # 功能：
 # 1. 扫描指定目录下的所有 .desktop 文件
-# 2. 计算每个文件的 MD5 哈希值
-# 3. 按哈希值分组，相同内容的文件只保留一份
-# 4. 删除重复文件，输出去重报告
+# 2. 提取每个文件的 Exec 命令（忽略路径和参数）
+# 3. 按 Exec 命令分组，相同命令的文件只保留一份
+# 4. 支持跨目录去重（删除与参考目录重复的文件）
+# 5. 删除重复文件，输出去重报告
+#
+# 去重策略：
+# - 基于 Exec 命令进行去重（而非文件内容哈希）
+# - 例如：Exec=/usr/bin/app %F 和 Exec=app %U 会被识别为重复
+# - 保留第一个遇到的文件，删除后续重复文件
 #
 # 用法：
-#   dedup_desktop_files.sh <files_res_dir> [--verbose]
+#   dedup_desktop_files.sh <target_dir> [--verbose]
+#   dedup_desktop_files.sh <target_dir> --reference-dir <ref_dir> [--verbose]
 #
 # 参数：
-#   files_res_dir - files_res 目录路径（如 /project/files_res）
-#   --verbose     - 可选，显示详细日志
+#   target_dir     - 目标目录路径（如 /project/files_res 或 /project/binary）
+#   --reference-dir - 可选，参考目录路径。指定后，删除 target_dir 中与 ref_dir Exec 命令重复的文件
+#   --verbose      - 可选，显示详细日志
 #
 # 示例：
+#   # 单目录去重：删除 files_res 内部重复的 desktop 文件
 #   dedup_desktop_files.sh /project/files_res
-#   dedup_desktop_files.sh /project/files_res --verbose
+#
+#   # 跨目录去重：删除 binary 中与 files_res Exec 命令重复的 desktop 文件
+#   dedup_desktop_files.sh /project/binary --reference-dir /project/files_res
 
 set -e
 
@@ -30,7 +41,8 @@ NC='\033[0m' # No Color
 
 # 全局变量
 VERBOSE=false
-FILES_RES_DIR=""
+TARGET_DIR=""
+REFERENCE_DIR=""
 STAT_TOTAL_FILES=0
 STAT_UNIQUE_FILES=0
 STAT_DUPLICATE_FILES=0
@@ -54,15 +66,19 @@ log_error() {
 
 # 显示使用说明
 usage() {
-	echo "用法: $0 <files_res_dir> [--verbose]"
+	echo "用法: $0 <target_dir> [--reference-dir <ref_dir>] [--verbose]"
 	echo ""
 	echo "参数:"
-	echo "  files_res_dir - files_res 目录路径"
-	echo "  --verbose     - 显示详细日志"
+	echo "  target_dir      - 目标目录路径"
+	echo "  --reference-dir - 可选，参考目录路径。指定后删除 target_dir 中与 ref_dir 重复的文件"
+	echo "  --verbose       - 显示详细日志"
 	echo ""
 	echo "示例:"
+	echo "  # 单目录去重"
 	echo "  $0 /project/files_res"
-	echo "  $0 /project/files_res --verbose"
+	echo ""
+	echo "  # 跨目录去重：删除 binary 中与 files_res 重复的文件"
+	echo "  $0 /project/binary --reference-dir /project/files_res"
 }
 
 # 解析参数
@@ -72,22 +88,74 @@ parse_args() {
 		exit 1
 	fi
 
-	FILES_RES_DIR="$1"
+	TARGET_DIR="$1"
+	shift
 
-	if [ "$2" = "--verbose" ]; then
-		VERBOSE=true
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--reference-dir)
+			if [ $# -lt 2 ]; then
+				log_error "--reference-dir 需要指定目录路径"
+				exit 1
+			fi
+			REFERENCE_DIR="$2"
+			shift 2
+			;;
+		--verbose)
+			VERBOSE=true
+			shift
+			;;
+		*)
+			log_error "未知参数: $1"
+			usage
+			exit 1
+			;;
+		esac
+	done
+
+	# 验证目标目录存在
+	if [ ! -d "${TARGET_DIR}" ]; then
+		log_error "目标目录不存在: ${TARGET_DIR}"
+		exit 1
 	fi
 
-	# 验证目录存在
-	if [ ! -d "${FILES_RES_DIR}" ]; then
-		log_error "目录不存在: ${FILES_RES_DIR}"
+	# 验证参考目录存在（如果指定）
+	if [ -n "${REFERENCE_DIR}" ] && [ ! -d "${REFERENCE_DIR}" ]; then
+		log_error "参考目录不存在: ${REFERENCE_DIR}"
 		exit 1
 	fi
 }
 
+# 提取 Exec 命令（忽略路径和参数）
+# 例如：Exec=/usr/bin/app %F -> app
+#       Exec=app %F -> app
+extract_exec_command() {
+	local desktop_file="$1"
+	local exec_line
+
+	# 读取 Exec 行
+	exec_line=$(grep -E "^Exec=" "${desktop_file}" | head -n 1)
+
+	if [ -z "${exec_line}" ]; then
+		echo ""
+		return
+	fi
+
+	# 提取 Exec= 后面的内容
+	local exec_value="${exec_line#Exec=}"
+
+	# 移除路径前缀（如 /usr/bin/）
+	exec_value="${exec_value##*/}"
+
+	# 移除参数（如 %F, %U 等）
+	exec_value=$(echo "${exec_value}" | awk '{print $1}')
+
+	echo "${exec_value}"
+}
+
 # 去重函数
 dedup_desktop_files() {
-	local apps_dir="${FILES_RES_DIR}/share/applications"
+	local apps_dir="${TARGET_DIR}/share/applications"
 
 	# 检查 applications 目录是否存在
 	if [ ! -d "${apps_dir}" ]; then
@@ -116,30 +184,59 @@ dedup_desktop_files() {
 
 	log_info "扫描到 ${STAT_TOTAL_FILES} 个 desktop 文件"
 
-	# 关联数组：哈希值 -> 第一个文件路径
-	local -A hash_to_file
+	# 关联数组：Exec 命令 -> 第一个文件路径
+	local -A exec_to_file
 	# 数组：需要删除的文件
 	local -a files_to_delete
 
+	# 如果指定了参考目录，先加载参考目录中的 desktop 文件 Exec 命令
+	if [ -n "${REFERENCE_DIR}" ]; then
+		local ref_apps_dir="${REFERENCE_DIR}/share/applications"
+		if [ -d "${ref_apps_dir}" ]; then
+			local ref_desktop_files
+			ref_desktop_files=$(find "${ref_apps_dir}" -maxdepth 1 -name "*.desktop" -type f 2>/dev/null || true)
+
+			if [ -n "${ref_desktop_files}" ]; then
+				log_info "加载参考目录 ${REFERENCE_DIR} 中的 desktop 文件 Exec 命令..."
+				local -a ref_files_array
+				readarray -t ref_files_array <<<"${ref_desktop_files}"
+
+				for ref_file in "${ref_files_array[@]}"; do
+					local ref_exec
+					ref_exec=$(extract_exec_command "${ref_file}")
+					if [ -n "${ref_exec}" ]; then
+						exec_to_file[${ref_exec}]="${ref_file}"
+						if [ "${VERBOSE}" = "true" ]; then
+							log_info "  参考文件: $(basename "${ref_file}") -> Exec=${ref_exec}"
+						fi
+					fi
+				done
+				log_info "已加载 ${#exec_to_file[@]} 个参考文件 Exec 命令"
+			fi
+		else
+			log_info "参考目录中不存在 applications 目录，跳过参考加载"
+		fi
+	fi
+
 	# 遍历所有 desktop 文件
 	for desktop_file in "${files_array[@]}"; do
-		# 计算 MD5 哈希（忽略末尾空白符）
-		local file_hash
-		file_hash=$(md5sum "${desktop_file}" | awk '{print $1}')
+		# 提取 Exec 命令
+		local exec_cmd
+		exec_cmd=$(extract_exec_command "${desktop_file}")
 
-		if [ -z "${file_hash}" ]; then
-			log_warning "无法计算文件哈希: ${desktop_file}"
+		if [ -z "${exec_cmd}" ]; then
+			log_warning "无法提取 Exec 命令: ${desktop_file}"
 			continue
 		fi
 
 		if [ "${VERBOSE}" = "true" ]; then
-			log_info "处理: $(basename "${desktop_file}") -> ${file_hash}"
+			log_info "处理: $(basename "${desktop_file}") -> Exec=${exec_cmd}"
 		fi
 
-		# 检查是否已存在相同哈希的文件
-		if [ -z "${hash_to_file[${file_hash}]}" ]; then
-			# 首次遇到此哈希，保留
-			hash_to_file[${file_hash}]="${desktop_file}"
+		# 检查是否已存在相同 Exec 命令的文件
+		if [ -z "${exec_to_file[${exec_cmd}]}" ]; then
+			# 首次遇到此 Exec 命令，保留
+			exec_to_file[${exec_cmd}]="${desktop_file}"
 			STAT_UNIQUE_FILES=$((STAT_UNIQUE_FILES + 1))
 			if [ "${VERBOSE}" = "true" ]; then
 				log_info "  保留 (新): $(basename "${desktop_file}")"
@@ -148,7 +245,12 @@ dedup_desktop_files() {
 			# 重复文件，记录待删除
 			files_to_delete+=("${desktop_file}")
 			STAT_DUPLICATE_FILES=$((STAT_DUPLICATE_FILES + 1))
-			log_warning "发现重复内容: $(basename "${desktop_file}") 与 $(basename "${hash_to_file[${file_hash}]}") 相同"
+			local existing_file="${exec_to_file[${exec_cmd}]}"
+			if [ -n "${REFERENCE_DIR}" ]; then
+				log_warning "发现与参考目录重复: $(basename "${desktop_file}") 与 $(basename "${existing_file}") Exec 命令相同 (${exec_cmd})"
+			else
+				log_warning "发现重复 Exec 命令: $(basename "${desktop_file}") 与 $(basename "${existing_file}") 相同 (${exec_cmd})"
+			fi
 			if [ "${VERBOSE}" = "true" ]; then
 				log_info "  将删除: $(basename "${desktop_file}")"
 			fi
