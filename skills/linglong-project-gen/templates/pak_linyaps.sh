@@ -4,6 +4,17 @@ set -x
 
 ll_id="${package_id}"
 
+# 默認 base/runtime 配置（可通過命令行參數覆蓋）
+DEFAULT_BASE_ID="org.deepin.base"
+DEFAULT_BASE_VERSION="25.2.2"
+DEFAULT_RUNTIME_ID="org.deepin.runtime.dtk"
+DEFAULT_RUNTIME_VERSION="25.2.2"
+
+base_id="${DEFAULT_BASE_ID}"
+base_version="${DEFAULT_BASE_VERSION}"
+runtime_id="${DEFAULT_RUNTIME_ID}"
+runtime_version="${DEFAULT_RUNTIME_VERSION}"
+
 # Options
 ## Auto cleaning, default blank value means "true/TRUE"
 auto_clean=""
@@ -53,6 +64,18 @@ init_global_data() {
 		--build_tmp_dir)
 			build_tmp_dir="$val"
 			;;
+		--base_id)
+			base_id="$val"
+			;;
+		--base_version)
+			base_version="$val"
+			;;
+		--runtime_id)
+			runtime_id="$val"
+			;;
+		--runtime_version)
+			runtime_version="$val"
+			;;
 		esac
 	done
 
@@ -74,23 +97,110 @@ init_global_data() {
 	case "${linyaps_arch}" in
 	"x86_64")
 		binary_arch="amd64"
-		base_id="${base_id}"
-		base_version="${base_version}"
-		runtime_id="${runtime_id}"
-		runtime_version="${runtime_version}"
 		;;
 	"arm64")
 		binary_arch="arm64"
-		base_id="${base_id}"
-		base_version="${base_version}"
-		runtime_id="${runtime_id}"
-		runtime_version="${runtime_version}"
 		;;
 	*)
 		echo "Unsupported architecture: ${linyaps_arch}"
 		exit 1
 		;;
 	esac
+
+	# 驗證 base/runtime 配置
+	validate_base_runtime
+}
+
+# 驗證 base/runtime 配置值
+# 檢查項：
+# 1. 值不為空
+# 2. 值不是變量引用（如 ${var} 或 $var）
+# 3. ID 格式符合反向域名規範（如 org.deepin.base）
+# 4. Version 格式為 X.Y.Z 或 X.Y.Z.W
+validate_base_runtime() {
+	local has_error=0
+
+	# 定義需要驗證的字段：名稱、值、ID正則、描述
+	local fields=(
+		"base_id:${base_id}:org[0-9a-z]*\\.[0-9a-z][0-9a-z.]*:基礎運行時ID"
+		"base_version:${base_version}:版本號:基礎運行時版本"
+		"runtime_id:${runtime_id}:org[0-9a-z]*\\.[0-9a-z][0-9a-z.]*:應用運行時ID"
+		"runtime_version:${runtime_version}:版本號:應用運行時版本"
+	)
+
+	for field_def in "${fields[@]}"; do
+		IFS=':' read -r field_name field_value _ field_desc <<<"${field_def}"
+
+		# 檢查1：值不為空
+		if [ -z "${field_value}" ]; then
+			echo "錯誤: ${field_desc} (${field_name}) 為空！" >&2
+			echo "  修復建議: 使用 --${field_name} 參數指定，或檢查腳本頂部默認值定義" >&2
+			has_error=1
+			continue
+		fi
+
+		# 檢查2：值不是變量引用（LLM 常見錯誤模式）
+		# 檢測 ${var} 或 $var 形式的值
+		if [[ "${field_value}" =~ ^\$\{?[a-zA-Z_][a-zA-Z0-9_]*\}?$ ]]; then
+			echo "錯誤: ${field_desc} (${field_name}) 的值為變量引用 '${field_value}'，而非實際值！" >&2
+			echo "  這通常是 LLM 生成時的錯誤，變量自引用會導致值為空。" >&2
+			echo "  修復建議: 將 ${field_name} 設置為實際值，例如：" >&2
+			case "${field_name}" in
+			base_id)
+				echo "    ${field_name}=\"org.deepin.base\"" >&2
+				;;
+			base_version)
+				echo "    ${field_name}=\"25.2.2\"" >&2
+				;;
+			runtime_id)
+				echo "    ${field_name}=\"org.deepin.runtime.dtk\"" >&2
+				;;
+			runtime_version)
+				echo "    ${field_name}=\"25.2.2\"" >&2
+				;;
+			esac
+			has_error=1
+			continue
+		fi
+
+		# 檢查3：ID 格式驗證（僅對 *_id 字段）
+		if [[ "${field_name}" == *_id ]]; then
+			if [[ ! "${field_value}" =~ ^org[0-9a-z]*\.[0-9a-z][0-9a-z.]*$ ]]; then
+				echo "警告: ${field_desc} (${field_name}='${field_value}') 格式可能不正確" >&2
+				echo "  期望格式: org.xxx.xxx（反向域名格式）" >&2
+				# 格式警告不阻止構建，僅提示
+			fi
+		fi
+
+		# 檢查4：Version 格式驗證（僅對 *_version 字段）
+		if [[ "${field_name}" == *_version ]]; then
+			if [[ ! "${field_value}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+				echo "錯誤: ${field_desc} (${field_name}='${field_value}') 版本格式不正確" >&2
+				echo "  期望格式: X.Y.Z 或 X.Y.Z.W（如 25.2.2 或 23.1.0.1）" >&2
+				has_error=1
+				continue
+			fi
+		fi
+
+		echo "驗證通過: ${field_desc} (${field_name}='${field_value}')"
+	done
+
+	if [ "${has_error}" -eq 1 ]; then
+		echo "" >&2
+		echo "========================================" >&2
+		echo "base/runtime 配置驗證失敗！" >&2
+		echo "請使用以下參數指定正確的值：" >&2
+		echo "  --base_id=<值>        基礎運行時ID（如 org.deepin.base）" >&2
+		echo "  --base_version=<值>   基礎運行時版本（如 25.2.2）" >&2
+		echo "  --runtime_id=<值>     應用運行時ID（如 org.deepin.runtime.dtk）" >&2
+		echo "  --runtime_version=<值> 應用運行時版本（如 25.2.2）" >&2
+		echo "========================================" >&2
+		exit 1
+	fi
+
+	echo "base/runtime 配置驗證通過"
+	echo "  base: ${base_id}/${base_version}"
+	echo "  runtime: ${runtime_id}/${runtime_version}"
 }
 
 validate_version_format() {

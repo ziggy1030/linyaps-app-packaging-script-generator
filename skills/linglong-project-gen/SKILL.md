@@ -528,7 +528,56 @@ case "${linyaps_arch}" in
 
 **原因：** 顶部变量定义便于维护和修改，避免多处硬编码不一致。
 
-### 4. 生成后自检清单
+### 4. base/runtime 变量自引用（⚠️ LLM 高频错误）
+
+❌ **错误写法（变量自引用，值为空！）：**
+```bash
+# 顶部未定义 base_id 等变量
+ll_id="${package_id}"
+
+# case 中自引用 — 此时 base_id 等变量为空！
+case "${linyaps_arch}" in
+"x86_64")
+  binary_arch="amd64"
+  base_id="${base_id}"              # ❌ 自引用空变量！
+  base_version="${base_version}"    # ❌ 自引用空变量！
+  runtime_id="${runtime_id}"        # ❌ 自引用空变量！
+  runtime_version="${runtime_version}" # ❌ 自引用空变量！
+  ;;
+```
+
+✅ **正确写法（使用默认值 + 命令行参数覆盖）：**
+```bash
+ll_id="${package_id}"
+
+# 默认 base/runtime 配置（可通过命令行参数覆盖）
+DEFAULT_BASE_ID="org.deepin.base"
+DEFAULT_BASE_VERSION="25.2.2"
+DEFAULT_RUNTIME_ID="org.deepin.runtime.dtk"
+DEFAULT_RUNTIME_VERSION="25.2.2"
+
+base_id="${DEFAULT_BASE_ID}"
+base_version="${DEFAULT_BASE_VERSION}"
+runtime_id="${DEFAULT_RUNTIME_ID}"
+runtime_version="${DEFAULT_RUNTIME_VERSION}"
+
+# case 中只需设置 binary_arch，不再重复赋值 base/runtime
+case "${linyaps_arch}" in
+"x86_64")
+  binary_arch="amd64"
+  ;;
+"arm64")
+  binary_arch="arm64"
+  ;;
+esac
+
+# init_global_data 末尾调用验证
+validate_base_runtime
+```
+
+**原因：** `base_id="${base_id}"` 是变量自引用，如果 `base_id` 未事先定义，其值为空。这是 LLM 生成时最常见的错误之一。正确做法是在脚本顶部定义默认值，并通过 `validate_base_runtime()` 函数在运行时验证。
+
+### 5. 生成后自检清单
 
 生成 `pak_linyaps.sh` 后，必须检查以下内容：
 
@@ -537,6 +586,28 @@ case "${linyaps_arch}" in
 - [ ] `build_dir_init` 函数中有 `export command=${binary_name:-...}` 行
 - [ ] `base_id`、`runtime_id` 等变量在脚本顶部定义，case 中引用
 - [ ] `--binary_name` 参数在 `init_global_data` 的参数解析中存在
+- [ ] **`base_id`、`base_version`、`runtime_id`、`runtime_version` 使用实际值，不是变量自引用**
+- [ ] **`DEFAULT_BASE_ID` 等默认值定义存在**
+- [ ] **`--base_id`、`--base_version`、`--runtime_id`、`--runtime_version` 命令行参数已支持**
+- [ ] **`validate_base_runtime()` 函数已定义并在 `init_global_data()` 末尾调用**
+- [ ] **case 语句中无 `base_id="${base_id}"` 等自引用赋值**
+
+### 6. 生成后验证步骤
+
+生成工程后，必须运行以下验证：
+
+```bash
+# 验证 pak_linyaps.sh 脚本中的 base/runtime 配置
+"${skill_root}/scripts/validate_pak_script.sh" "${project_dir}"
+
+# 如发现问题，使用 --fix 自动修复
+"${skill_root}/scripts/validate_pak_script.sh" "${project_dir}" --fix
+
+# 验证 linglong.yaml 格式（含 base/runtime 格式验证）
+"${skill_root}/../compat-testing/scripts/validate_linglong_yaml.py" \
+  --input "${project_dir}/templates/linglong.yaml" \
+  --exec-name "${binary_name}"
+```
 
 ---
 

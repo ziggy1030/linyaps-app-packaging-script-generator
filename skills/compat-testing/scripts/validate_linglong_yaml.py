@@ -104,6 +104,7 @@ class LinglongYamlValidator:
         # Run validations
         self.results["yaml_format"] = self._validate_yaml_format()
         self.results["required_fields"] = self._validate_required_fields()
+        self.results["base_runtime"] = self._validate_base_runtime()
         self.results["command"] = self._validate_command()
 
         # Optional: version validation
@@ -191,6 +192,131 @@ class LinglongYamlValidator:
             )
 
         return result
+
+    def _validate_base_runtime(self) -> ValidationResult:
+        """Validate base and runtime field format and values.
+
+        Checks:
+        1. Field exists and is not empty
+        2. Format is id/version (e.g., org.deepin.base/25.2.2)
+        3. ID part follows reverse domain format (org.xxx.xxx)
+        4. Version part follows X.Y.Z or X.Y.Z.W format
+        5. No unresolved variable references (e.g., ${base_id})
+        """
+        result = ValidationResult("Base/Runtime Validation")
+
+        if self.yaml_content is None:
+            result.add_fail("yaml_content", "No YAML content to validate")
+            return result
+
+        # Validate base field
+        base_value = self.yaml_content.get("base")
+        self._validate_id_version_field(
+            "base", base_value, result,
+            default_id="org.deepin.base",
+            default_version="25.2.2",
+        )
+
+        # Validate runtime field
+        runtime_value = self.yaml_content.get("runtime")
+        self._validate_id_version_field(
+            "runtime", runtime_value, result,
+            default_id="org.deepin.runtime.dtk",
+            default_version="25.2.2",
+        )
+
+        return result
+
+    def _validate_id_version_field(
+        self,
+        field_name: str,
+        field_value: Any,
+        result: ValidationResult,
+        default_id: str = "org.deepin.base",
+        default_version: str = "25.2.2",
+    ):
+        """Validate a field that should be in id/version format.
+
+        Args:
+            field_name: Name of the field (e.g., 'base', 'runtime')
+            field_value: The actual value from YAML
+            result: ValidationResult to add findings to
+            default_id: Default ID for fix suggestions
+            default_version: Default version for fix suggestions
+        """
+        # Check 1: Field exists
+        if field_value is None:
+            result.add_fail(
+                field_name,
+                f"Required field '{field_name}' is missing. "
+                f"Suggested fix: {field_name}: {default_id}/{default_version}",
+            )
+            return
+
+        # Check 2: Field is not empty
+        if isinstance(field_value, str) and field_value.strip() == "":
+            result.add_fail(
+                field_name,
+                f"Required field '{field_name}' is empty. "
+                f"Suggested fix: {field_name}: {default_id}/{default_version}",
+            )
+            return
+
+        field_str = str(field_value).strip()
+
+        # Check 3: No unresolved variable references
+        # Detect patterns like ${var}, $var, ${var}_suffix
+        var_patterns = [
+            r"\$\{[a-zA-Z_][a-zA-Z0-9_]*\}",  # ${var}
+            r"\$[a-zA-Z_][a-zA-Z0-9_]*",       # $var
+        ]
+        for pattern in var_patterns:
+            if re.search(pattern, field_str):
+                result.add_fail(
+                    field_name,
+                    f"Field '{field_name}' contains unresolved variable reference: '{field_str}'. "
+                    f"This is likely caused by envsubst not replacing the variable (empty value). "
+                    f"Suggested fix: ensure the variable is set before envsubst, "
+                    f"or use actual value like '{default_id}/{default_version}'",
+                )
+                return
+
+        # Check 4: Format is id/version
+        if "/" not in field_str:
+            result.add_fail(
+                field_name,
+                f"Field '{field_name}' is missing '/' separator: '{field_str}'. "
+                f"Expected format: id/version (e.g., {default_id}/{default_version})",
+            )
+            return
+
+        parts = field_str.split("/", 1)
+        field_id = parts[0]
+        field_version = parts[1] if len(parts) > 1 else ""
+
+        # Check 5: ID format (reverse domain format: org.xxx.xxx)
+        id_pattern = r"^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)+$"
+        if not re.match(id_pattern, field_id):
+            result.add_warning(
+                f"{field_name}.id",
+                f"ID part '{field_id}' does not follow reverse domain format "
+                f"(expected: org.xxx.xxx). "
+                f"Common values: org.deepin.base, org.deepin.runtime.dtk",
+            )
+
+        # Check 6: Version format (X.Y.Z or X.Y.Z.W)
+        version_pattern = r"^(\d+)\.(\d+)\.(\d+)(\.\d+)?$"
+        if not re.match(version_pattern, field_version):
+            result.add_fail(
+                f"{field_name}.version",
+                f"Version part '{field_version}' has invalid format. "
+                f"Expected: X.Y.Z or X.Y.Z.W (e.g., 25.2.2 or 23.1.0.1)",
+            )
+        else:
+            result.add_pass(
+                f"{field_name}",
+                f"Field '{field_name}' format is valid: {field_id}/{field_version}",
+            )
 
     def _validate_command(self) -> ValidationResult:
         """Validate command field consistency with desktop Exec value."""

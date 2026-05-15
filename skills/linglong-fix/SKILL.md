@@ -119,6 +119,80 @@ description: >
 
 ### 1. linglong.yaml 修复
 
+#### 1.0 base/runtime 值检查与修复
+
+**⚠️ 这是 LLM 生成工程时最常见的问题之一！**
+
+LLM 生成 `pak_linyaps.sh` 时，经常将 `base_id`、`runtime_id` 等变量写为自引用形式（如 `base_id="${base_id}"`），导致实际值为空，进而使 `linglong.yaml` 中的 `base` 和 `runtime` 字段为空或格式错误。
+
+##### 1.0.1 检测问题
+
+使用 `validate_pak_script.sh` 检测脚本中的变量定义问题：
+
+```bash
+# 检测 pak_linyaps.sh 中的 base/runtime 配置问题
+"${skill_root}/../linglong-project-gen/scripts/validate_pak_script.sh" "${project_dir}"
+```
+
+使用 `validate_linglong_yaml.py` 检测 YAML 中的 base/runtime 格式问题：
+
+```bash
+# 检测 linglong.yaml 中的 base/runtime 格式问题
+"${skill_root}/../compat-testing/scripts/validate_linglong_yaml.py" \
+  --input "${project_dir}/templates/linglong.yaml" \
+  --exec-name "${binary_name}"
+```
+
+**常见问题模式：**
+
+| 问题 | 症状 | 原因 |
+|------|------|------|
+| 变量自引用 | `base_id="${base_id}"` → 值为空 | LLM 生成时未定义顶部变量 |
+| 空值 | `base_id=""` → envsubst 输出 `base: /` | 变量未初始化 |
+| 未替换变量 | `base: ${base_id}/${base_version}` | envsubst 未替换（变量未 export） |
+| 格式错误 | `base: org.deepin.base` (缺少版本) | 生成时遗漏版本号 |
+
+##### 1.0.2 自动修复
+
+```bash
+# 自动修复 pak_linyaps.sh 中的变量定义问题
+"${skill_root}/../linglong-project-gen/scripts/validate_pak_script.sh" "${project_dir}" --fix
+```
+
+**修复内容：**
+- 空值 → 填充默认值（`org.deepin.base/25.2.2`、`org.deepin.runtime.dtk/25.2.2`）
+- 变量自引用 → 替换为默认值
+- 缺少 DEFAULT_ 定义 → 添加默认值定义
+- 缺少命令行参数 → 添加 `--base_id` 等参数解析
+- case 中自引用赋值 → 移除
+
+##### 1.0.3 手动修复 linglong.yaml
+
+如果 `linglong.yaml` 中的 `base`/`runtime` 字段有问题，手动修复：
+
+```bash
+# 检查当前值
+grep -E "^base:|^runtime:" "${project_dir}/templates/linglong.yaml"
+
+# 修复 base 字段（如果为空或格式错误）
+sed -i 's|^base:.*|base: org.deepin.base/25.2.2|' "${project_dir}/templates/linglong.yaml"
+
+# 修复 runtime 字段（如果为空或格式错误）
+sed -i 's|^runtime:.*|runtime: org.deepin.runtime.dtk/25.2.2|' "${project_dir}/templates/linglong.yaml"
+```
+
+##### 1.0.4 验证修复结果
+
+```bash
+# 重新验证脚本
+"${skill_root}/../linglong-project-gen/scripts/validate_pak_script.sh" "${project_dir}"
+
+# 重新验证 YAML
+"${skill_root}/../compat-testing/scripts/validate_linglong_yaml.py" \
+  --input "${project_dir}/templates/linglong.yaml" \
+  --exec-name "${binary_name}"
+```
+
 #### 1.1 缩进修复
 
 ```python
@@ -374,6 +448,44 @@ def fix_binary_permissions(bin_dir: str):
 def fix_project(project_dir: str, validation_report: dict) -> dict:
     """执行完整修复流程"""
     fixes_applied = []
+    
+    # 0. 修复 base/runtime 配置（优先级最高）
+    # 检测 pak_linyaps.sh 中的变量自引用和空值问题
+    import subprocess
+    validate_script = f"{project_dir}/../linglong-project-gen/scripts/validate_pak_script.sh"
+    if os.path.exists(validate_script):
+        result = subprocess.run(
+            [validate_script, project_dir, "--fix"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 2:  # 已自动修复
+            fixes_applied.append('base_runtime_config')
+    
+    # 0.1 修复 linglong.yaml 中的 base/runtime 字段
+    yaml_path = f"{project_dir}/templates/linglong.yaml"
+    if os.path.exists(yaml_path):
+        with open(yaml_path, 'r') as f:
+            data = yaml.safe_load(f)
+        
+        base_fixed = False
+        runtime_fixed = False
+        
+        # 修复 base 字段
+        base_value = data.get('base', '')
+        if not base_value or '${' in str(base_value) or str(base_value).strip() == '/':
+            data['base'] = 'org.deepin.base/25.2.2'
+            base_fixed = True
+        
+        # 修复 runtime 字段
+        runtime_value = data.get('runtime', '')
+        if not runtime_value or '${' in str(runtime_value) or str(runtime_value).strip() == '/':
+            data['runtime'] = 'org.deepin.runtime.dtk/25.2.2'
+            runtime_fixed = True
+        
+        if base_fixed or runtime_fixed:
+            with open(yaml_path, 'w') as f:
+                yaml.dump(data, f, default_flow_style=False, allow_unicode=True)
+            fixes_applied.append('yaml_base_runtime')
     
     # 1. 修复linglong.yaml
     if validation_report.get('yaml_validation', {}).get('status') == 'failed':
