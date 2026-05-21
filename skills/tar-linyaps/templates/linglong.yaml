@@ -1,0 +1,22 @@
+version: "1.0"
+
+package:
+  id: ${package_id}
+  name: "${app_name}"
+  version: ${ll_version}
+  kind: app
+  architecture: ${ll_architecture}
+  description: |
+    ${description}
+
+base: ${base}
+runtime: ${runtime}
+
+buildept:
+  apt:
+    - ${extra_apt_deps}
+
+command: "${wrapper_script_path}"
+
+build: |
+  echo "No build required for binary package"
