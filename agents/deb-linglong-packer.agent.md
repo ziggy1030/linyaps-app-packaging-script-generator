@@ -329,6 +329,7 @@ done
 #### Step 5: 兼容性测试
 调用 `compat-testing` skill：
 - 验证linglong.yaml格式
+- **验证 `package.id`、`package.name`、`package.description` 不为空且不包含未解析变量引用**（如 `${package_id}`、`${app_name}`、`${description}`）
 - 验证资源目录结构
 - 执行打包测试
 - 运行兼容性检测
@@ -386,6 +387,7 @@ done
 ##### Step 3: 兼容性测试
 调用 `compat-testing` skill：
 - 验证linglong.yaml格式
+- **验证 `package.id`、`package.name`、`package.description` 不为空且不包含未解析变量引用**（如 `${package_id}`、`${app_name}`、`${description}`）
 - 验证资源目录结构
 - 执行打包测试
 - 运行兼容性检测
@@ -530,6 +532,7 @@ python3 skills/compat-testing/scripts/common-data-verify.py <files_res_dir> --js
 ```bash
 python3 skills/compat-testing/scripts/validate_linglong_yaml.py --input linglong.yaml --exec-name "app %U" --json
 ```
+> **注意**：此腳本會檢查 `package.id`、`package.name`、`package.description` 是否為空或包含未解析的 envsubst 變量引用（如 `${package_id}`）。若報告 `fail`，說明工程初始化時未正確填充這些欄位。
 
 ### 调用compat_checker
 ```python
