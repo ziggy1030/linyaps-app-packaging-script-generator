@@ -267,6 +267,7 @@ fi
 **注意**：
 - `package_id` 從 `app_name` 推導（反向域名格式，如 `com.example.app`）
 - `command` 欄位占位符由 `pak_linyaps.sh` 在構建時自動處理
+- `base`/`runtime` 欄位為空佔位符 `""`，由 `build_pak()` 透過 `sed` 延遲注入
 - **禁止**在資源收集階段手動修改 desktop 文件的 `Exec=` 欄位
 
 ---
@@ -282,6 +283,7 @@ fi
 | Step 7: 工程生成 | tar-linyaps skill | 準備 templates/、scripts/、config/ 目錄結構 |
 | 構建時 | pak_linyaps.sh | 創建 wrapper 腳本（binary/bin/*.wrapper） |
 | 構建時 | pak_linyaps.sh | 更新 linglong.yaml 的 command（sed 替換為數組格式） |
+| 構建時 | pak_linyaps.sh | 更新 linglong.yaml 的 base/runtime（sed 延遲注入） |
 | 構建時 | pak_linyaps.sh | 更新 desktop 的 Exec（替換為 wrapper 絕對路徑） |
 | 構建時 | pak_linyaps.sh | Desktop 文件去重（dedup_desktop_files.sh 兩步去重） |
 | 構建時 | pak_linyaps.sh | 嵌套 bin/ 路徑驗證（validate_bin_nesting.sh） |
@@ -310,7 +312,7 @@ main()
   │   ├─ handle_special_paths.sh 路徑轉換
   │   ├─ 自動偵測 binary_name（desktop → scan_executables.sh）
   │   ├─ 創建 wrapper 腳本（binary/bin/*.wrapper）
-  │   ├─ 更新 linglong.yaml command + desktop Exec
+  │   ├─ 更新 linglong.yaml command + base/runtime + desktop Exec
   │   ├─ dedup_desktop_files.sh 兩步去重
   │   ├─ validate_bin_nesting.sh 嵌套 bin/ 驗證
   │   ├─ 創建 .linyaps_genius 標識文件
@@ -343,16 +345,28 @@ build: |
 1. **不要過度分析結構**：只需定位 binary name，pak_linyaps.sh 會處理路徑解析
 2. **Icon 嚴格驗證**：從 desktop Icon 欄位提取，支持 URL 導入，無有效 icon 時終止
 3. **Wrapper 機制**：Exec 和 command 由 pak_linyaps.sh 在構建時自動處理
-4. **源碼包檢測**：發現 CMakeLists.txt/Makefile 等時明確終止並提示
+4. **Base/Runtime 動態注入**：`linglong.yaml` 模板中 `base: ""`, `runtime: ""` 為空佔位符，由 `build_pak()` 透過 `sed` 延遲注入，支援 `--base_id`/`--runtime_id` CLI 參數動態覆蓋
 5. **🚫 禁止手動修改 Exec（嚴格）**：
    - 資源收集階段（Step 4/6/7）**絕對禁止**修改 desktop 文件的 `Exec=` 欄位
    - **絕對禁止**手動創建 bash wrapper 腳本或將 Exec 替換為 bash 路徑
    - **絕對禁止**在工程目錄中手動生成任何 `.sh` wrapper 文件
    - Exec 的修改**只能**由 `pak_linyaps.sh` 的 wrapper 機制在構建時自動完成
    - 如果發現 Exec 需要修改，**不要動手**，讓 pak_linyaps.sh 處理
-6. **🚫 禁止干預 ll-builder 構建**：SKILL 層面（Step 1-7）只負責資源收集和工程準備，不得在 SKILL 執行過程中調用 `ll-builder` 或修改構建流程
-7. **pak_linyaps.sh 是完整構建腳本**：用戶執行 `bash pak_linyaps.sh --src_path ... --package_id ...` 後，腳本自動完成從解壓到 .layer 導出的全部流程，無需手動干預
-8. **構建環境隔離**：`build_tmp_dir` 作為構建沙箱，所有中間產物在其中生成，構建完成後可自動清理
+6. **🚫 禁止手動修改 Exec（嚴格）**：
+   - 資源收集階段（Step 4/6/7）**絕對禁止**修改 desktop 文件的 `Exec=` 欄位
+   - **絕對禁止**手動創建 bash wrapper 腳本或將 Exec 替換為 bash 路徑
+   - **絕對禁止**在工程目錄中手動生成任何 `.sh` wrapper 文件
+   - Exec 的修改**只能**由 `pak_linyaps.sh` 的 wrapper 機制在構建時自動完成
+   - 如果發現 Exec 需要修改，**不要動手**，讓 pak_linyaps.sh 處理
+7. **🚫 禁止手動設置 base/runtime**：
+   - `linglong.yaml` 模板中 `base: ""`, `runtime: ""` 為空佔位符
+   - **絕對禁止**在生成階段將 base/runtime 寫入模板
+   - **絕對禁止**在 `build_dir_init()` 中 `export base=/runtime=` 變量
+   - base/runtime **只能**由 `build_pak()` 在構建時透過 `sed` 延遲注入
+   - 用戶通過 `--base_id`/`--runtime_id` CLI 參數動態指定
+8. **🚫 禁止干預 ll-builder 構建**：SKILL 層面（Step 1-7）只負責資源收集和工程準備，不得在 SKILL 執行過程中調用 `ll-builder` 或修改構建流程
+9. **pak_linyaps.sh 是完整構建腳本**：用戶執行 `bash pak_linyaps.sh --src_path ... --package_id ...` 後，腳本自動完成從解壓到 .layer 導出的全部流程，無需手動干預
+10. **構建環境隔離**：`build_tmp_dir` 作為構建沙箱，所有中間產物在其中生成，構建完成後可自動清理
 
 ---
 

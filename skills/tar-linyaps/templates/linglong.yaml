@@ -9,8 +9,8 @@ package:
   description: |
     ${description}
 
-base: ${base}
-runtime: ${runtime}
+base: ""
+runtime: ""
 
 command: ""
 

@@ -13,8 +13,8 @@ package:
   description: |
     Code Editing. Redefined.
 
-base: ${base_id}/${base_version}
-runtime: ${runtime_id}/${runtime_version}
+base: ""
+runtime: ""
 
 buildext:
   apt:

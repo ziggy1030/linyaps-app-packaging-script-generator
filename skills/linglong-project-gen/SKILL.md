@@ -93,8 +93,8 @@ package:
   description: |
     ${description}
 
-base: ${base}
-runtime: ${runtime}
+base: ""
+runtime: ""
 
 buildext:
   apt:
@@ -302,10 +302,7 @@ build_dir_init() {
 
   export prefix="\$PREFIX"
   export ll_version=${ll_version}
-  export base_id=${base_id}
-  export base_version=${base_version}
-  export runtime_id=${runtime_id}
-  export runtime_version=${runtime_version}
+  # base/runtime 由 build_pak() 透過 sed 延遲注入
   export linyaps_arch=${linyaps_arch}
 
   cat "${project_root}/templates/linglong.yaml" | envsubst >"${build_tmp_dir}/linglong.yaml"
@@ -425,8 +422,8 @@ with open('config/packages.csv', 'r') as f:
 | `${app_name}` | deb Description | 应用名称 |
 | `${ll_version}` | 版本转换 | 玲珑格式版本 (x.x.x.x) |
 | `${ll_architecture}` | 架构映射 | x86_64/aarch64 |
-| `${base}` | CSV配置 | 基础运行时 |
-| `${runtime}` | CSV配置 | 应用运行时 |
+| `${base}` | — | 已廢棄，模板使用空佔位符，由 build_pak() 透過 sed 延遲注入 |
+| `${runtime}` | — | 已廢棄，模板使用空佔位符，由 build_pak() 透過 sed 延遲注入 |
 | `${push}` | CSV配置 | 是否自动推送 |
 | `${command}` | desktop Exec | 启动命令（⚠️ 占位符，由 pak_linyaps.sh 动态设置） |
 | `${depends}` | deb Depends | 运行时依赖 |
@@ -492,9 +489,10 @@ exec "${script_dir}/../uTools/utools" "$@"
 **LLM Agent 在生成工程时必须遵守以下规则：**
 
 1. **禁止手动设置 command 字段**：linglong.yaml 模板中的 `${command}` 为占位符
-2. **禁止修改 desktop 文件的 Exec 字段**：由 wrapper 机制在构建时自动处理
-3. **不要提前优化**：wrapper 机制需要原始的 Exec 路径来正确提取 binary_name
-4. **信任 pak_linyaps.sh**：构建脚本会自动处理所有路径转换和 wrapper 创建
+2. **禁止手动设置 base/runtime 字段**：模板中 `base: ""`, `runtime: ""` 为空占位符，由 `build_pak()` 透過 sed 延遲注入
+3. **禁止修改 desktop 文件的 Exec 字段**：由 wrapper 机制在构建时自动处理
+4. **不要提前优化**：wrapper 机制需要原始的 Exec 路径来正确提取 binary_name
+5. **信任 pak_linyaps.sh**：构建脚本会自动处理所有路径转换和 wrapper 创建
 
 ## 输出目录结构
 
@@ -677,11 +675,17 @@ cp -rf "${project_root}/templates/files_res" "${build_tmp_dir}"
 # 错误1：导出 command 变量
 export command=${binary_name:-run.sh}
 
-# 错误2：跳过脚本调用
+# 错误2：导出 base/runtime 变量（envsubst 提前固化）
+export base_id=${base_id}
+export base_version=${base_version}
+export runtime_id=${runtime_id}
+export runtime_version=${runtime_version}
+
+# 错误3：跳过脚本调用
 # （缺失 dedup_desktop_files.sh 调用）
 # （缺失 validate_bin_nesting.sh 调用）
 
-# 错误3：linglong.yaml command 被错误填充
+# 错误4：linglong.yaml command 被错误填充
 # command: ""  被错误地替换为 ${binary_name:-run.sh}
 ```
 
@@ -691,19 +695,26 @@ export command=${binary_name:-run.sh}
 # 正确1：不导出 command，由 wrapper 机制设置
 # （无 export command）
 
-# 正确2：保留所有脚本调用
+# 正确2：不导出 base/runtime，由 sed 延遲注入
+# （无 export base_id / export base 等行）
+
+# 正确3：保留所有脚本调用
 "${project_root}/scripts/dedup_desktop_files.sh" "${build_tmp_dir}/binary" --reference-dir "${build_tmp_dir}/files_res"
 "${project_root}/scripts/dedup_desktop_files.sh" "${build_tmp_dir}/files_res"
 "${project_root}/scripts/validate_bin_nesting.sh" "${binary_dir}" --fix
 
-# 正确3：使用 templates/ 路径（模板文件位于 templates/ 目录）
+# 正确4：使用 templates/ 路径（模板文件位于 templates/ 目录）
 cat "${project_root}/templates/linglong.yaml" | envsubst
 cp -rf "${project_root}/templates/files_res" "${build_tmp_dir}"
 
-# 正确4：wrapper 创建后动态更新 command
+# 正确5：wrapper 创建后动态更新 command
 sed -i '/^\s*command:/{n;/^\s*-\s*/d}' "${build_tmp_dir}/linglong.yaml"
 sed -i "s|^\s*command:.*|command:|" "${build_tmp_dir}/linglong.yaml"
 sed -i '/^\s*command:/a\  - '"${binary_name}"'.wrapper' "${build_tmp_dir}/linglong.yaml"
+
+# 正确6：wrapper 创建后动态注入 base/runtime
+sed -i "s|^\s*base:.*|base: ${base_id}/${base_version}|" "${build_tmp_dir}/linglong.yaml"
+sed -i "s|^\s*runtime:.*|runtime: ${runtime_id}/${runtime_version}|" "${build_tmp_dir}/linglong.yaml"
 ```
 
 ### 3. 生成后自检清单
@@ -769,6 +780,40 @@ sed -i '/^\s*command:/a\  - '"${binary_name}"'.wrapper' "${build_tmp_dir}/linglo
 - `linglong.yaml` 模板中 `command: ""` 是正确的，表示由 wrapper 机制动态设置
 - `command` 必须指向 wrapper 脚本路径（如 `bin/app.wrapper`）
 - 提前导出 `command` 会导致启动命令错误，wrapper 机制失效
+
+### 2b. 禁止在 envsubst 阶段导出 base/runtime
+
+❌ **错误写法（已廢棄）：**
+```bash
+# 错误：在 envsubst 阶段导出 base/runtime
+export base_id=${base_id}
+export base_version=${base_version}
+export runtime_id=${runtime_id}
+export runtime_version=${runtime_version}
+# 或
+export base="${base_id}/${base_version}"
+export runtime="${runtime_id}/${runtime_version}"
+```
+
+✅ **正确写法：**
+```bash
+# 正确：不导出 base/runtime，由 build_pak() 透過 sed 延遲注入
+# 注意：无 export base_id / export base 等行
+export prefix="\$PREFIX"
+export ll_version=${ll_version}
+export linyaps_arch=${linyaps_arch}
+
+cat "${project_root}/templates/linglong.yaml" | envsubst >"${build_tmp_dir}/linglong.yaml"
+
+# 在 build_pak() 中，wrapper 创建后通过 sed 注入 base/runtime
+sed -i "s|^\s*base:.*|base: ${base_id}/${base_version}|" "${build_tmp_dir}/linglong.yaml"
+sed -i "s|^\s*runtime:.*|runtime: ${runtime_id}/${runtime_version}|" "${build_tmp_dir}/linglong.yaml"
+```
+
+**原因：**
+- 模板 `linglong.yaml` 中 `base: ""`, `runtime: ""` 是空佔位符
+- 提前 export 會導致 envsubst 將空佔位符替換為錯誤值（模板中已無 base/runtime 變量）
+- base/runtime 由 `build_pak()` 的 `sed` 在構建時動態注入，支援 `--base_id`/`--runtime_id` CLI 參數覆蓋
 
 ### 3. 变量定义方式错误
 
@@ -864,10 +909,12 @@ validate_base_runtime
 - [ ] `validate_bin_nesting.sh` 调用存在（bin 目录嵌套验证）
 - [ ] `handle_special_paths.sh` 调用存在（特殊路径处理）
 
-**command 处理正确性：**
+**command/base/runtime 处理正确性：**
 - [ ] `build_dir_init()` 中**无** `export command=` 行（command 由 wrapper 机制设置）
+- [ ] `build_dir_init()` 中**无** `export base_id=`、`export base=` 等行（base/runtime 由 sed 延遲注入）
 - [ ] `build_pak()` 中包含 wrapper 创建逻辑
 - [ ] `build_pak()` 中包含 sed 更新 command 的逻辑
+- [ ] `build_pak()` 中包含 sed 注入 base/runtime 的逻辑
 
 **⚠️ command 处理说明：**
 - 模板 `linglong.yaml` 中 `command: ""` 是**正确的**（空占位符）

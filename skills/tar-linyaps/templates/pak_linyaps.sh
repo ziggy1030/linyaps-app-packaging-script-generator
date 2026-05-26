@@ -520,14 +520,13 @@ build_dir_init() {
 	## Generate linyaps res
 	## Envs for linglong.yaml
 	## 注意：不要 export command，command 由 build_pak() 中的 wrapper 機制通過 sed 替換
+	## base/runtime 由 build_pak() 透過 sed 延遲注入
 	export prefix="\$PREFIX"
 	export package_id="${package_id}"
 	export app_name="${app_name}"
 	export description="${description}"
 	export ll_version=${ll_version}
 	export ll_architecture=${linyaps_arch}
-	export base="${base_id}/${base_version}"
-	export runtime="${runtime_id}/${runtime_version}"
 
 	# 注意：模板文件位於 templates/ 目錄下
 	cat "${project_root}/templates/linglong.yaml" |
@@ -689,6 +688,16 @@ WRAPPER_EOF
 		else
 			echo "Warning: No valid binary found for '${binary_name}' in ${binary_dir} (all candidates failed ELF compatibility check or not found)"
 		fi
+	fi
+
+	# 注入 base/runtime 到 linglong.yaml（延遲注入，支援 CLI 參數動態覆蓋）
+	# 模板中 base/runtime 為空佔位符 ""，由 sed 在構建時動態寫入
+	# 執行時機：wrapper 創建完成、desktop Exec 更新之後，ll-builder build 之前
+	if [ -f "${build_tmp_dir}/linglong.yaml" ]; then
+		sed -i "s|^\s*base:.*|base: ${base_id}/${base_version}|" "${build_tmp_dir}/linglong.yaml"
+		echo "Updated linglong.yaml base: ${base_id}/${base_version}"
+		sed -i "s|^\s*runtime:.*|runtime: ${runtime_id}/${runtime_version}|" "${build_tmp_dir}/linglong.yaml"
+		echo "Updated linglong.yaml runtime: ${runtime_id}/${runtime_version}"
 	fi
 
 	# 第一步去重：刪除 binary/ 中與 files_res/ 內容重複的 desktop 文件
