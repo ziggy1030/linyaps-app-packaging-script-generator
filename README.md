@@ -95,6 +95,78 @@ com.visualstudio.code,/path/to/code_amd64.deb,x86_64,org.deepin.base/23.1.0,org.
 com.visualstudio.code,/path/to/code_arm64.deb,aarch64,org.deepin.base/23.1.0,org.deepin.runtime.dtk/23.1.0,true
 ```
 
+## 批量初始化
+
+使用 `batch_init.sh` 脚本可以批量创建多个应用的打包工程：
+
+### 使用方法
+
+```bash
+# CSV 格式批量初始化
+./scripts/batch_init.sh tasks.csv --projects_root=./projects
+
+# JSON 格式批量初始化
+./scripts/batch_init.sh task.json --projects_root=./projects
+
+# 仅生成项目结构，不执行打包
+./scripts/batch_init.sh tasks.csv --dry-run
+```
+
+### CSV 格式示例
+
+```csv
+包名,架构,版本,下载地址
+com.visualstudio.code,x86_64,1.85.0,https://update.code.visualstudio.com/1.85.0/linux-deb-x64/stable
+org.mozilla.firefox,x86_64,151.0.2,https://ftp.mozilla.org/pub/firefox/releases/151.0.2/linux-x86_64/en-US/firefox-151.0.2.tar.bz2
+```
+
+### JSON 格式示例
+
+```json
+{
+  "global": {
+    "projects_root": "./projects"
+  },
+  "tasks": [
+    {
+      "pkgName": "com.visualstudio.code",
+      "arch": "x86_64",
+      "orig_version": "1.85.0",
+      "src_url": "https://update.code.visualstudio.com/1.85.0/linux-deb-x64/stable"
+    },
+    {
+      "pkgName": "org.mozilla.firefox",
+      "arch": "x86_64",
+      "orig_version": "151.0.2",
+      "src_url": "https://ftp.mozilla.org/pub/firefox/releases/151.0.2/linux-x86_64/en-US/firefox-151.0.2.tar.bz2"
+    }
+  ]
+}
+```
+
+### 输出目录结构
+
+批量初始化会为每个任务创建 `CI_ll_<pkgName>` 目录，包含：
+
+```
+projects/
+├── CI_ll_com.visualstudio.code/
+│   ├── linglong.yaml          # 玲珑打包配置文件
+│   ├── pak_linyaps.sh         # 自动化打包脚本
+│   ├── scripts/               # 辅助脚本目录
+│   ├── config/                # 配置文件目录
+│   │   └── base_runtime_whitelist.conf
+│   └── templates/
+│       └── files_res/         # 资源文件目录
+└── CI_ll_org.mozilla.firefox/
+    └── ...
+```
+
+### 示例文件
+
+- `examples/batch_init_example.csv` - CSV 格式示例
+- `examples/batch_init_example.json` - JSON 格式示例
+
 ## 工作流程
 
 ```

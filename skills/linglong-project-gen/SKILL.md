@@ -16,6 +16,51 @@ description: >
 - 需要生成自动化打包脚本
 - 批量创建多个应用的打包工程
 
+## 批量初始化
+
+使用 `batch_init.sh` 脚本可以批量创建多个应用的打包工程：
+
+```bash
+# CSV 格式批量初始化
+./scripts/batch_init.sh tasks.csv --projects_root=./projects
+
+# JSON 格式批量初始化
+./scripts/batch_init.sh task.json --projects_root=./projects
+
+# 仅生成项目结构，不执行打包
+./scripts/batch_init.sh tasks.csv --dry-run
+```
+
+**CSV 格式示例**：
+```csv
+包名,架构,版本,下载地址
+com.example.app,x86_64,1.0.0,https://example.com/app.deb
+```
+
+**JSON 格式示例**：
+```json
+{
+  "global": {
+    "projects_root": "./projects"
+  },
+  "tasks": [
+    {
+      "pkgName": "com.example.app",
+      "arch": "x86_64",
+      "orig_version": "1.0.0",
+      "src_url": "https://example.com/app.deb"
+    }
+  ]
+}
+```
+
+批量初始化会为每个任务创建 `CI_ll_<pkgName>` 目录，包含：
+- `linglong.yaml` - 玲珑打包配置文件
+- `pak_linyaps.sh` - 自动化打包脚本
+- `scripts/` - 辅助脚本目录
+- `config/` - 配置文件目录（含白名单配置）
+- `templates/files_res/` - 资源文件目录
+
 ## 工作流程
 
 ### 1. 准备工程目录

@@ -69,6 +69,51 @@ JSON 結構分為 `main`（必填）和 `optional`（可選）兩個分組：
 | `linyaps_arch` | 目標架構 | ❌ | `x86_64` |
 | `output_dir` | 輸出目錄 | ❌ | `./output` |
 
+## 批量初始化
+
+使用 `batch_init.sh` 腳本可以批量創建多個 tar 應用的打包工程：
+
+```bash
+# CSV 格式批量初始化
+./scripts/batch_init.sh tasks.csv --projects_root=./projects
+
+# JSON 格式批量初始化
+./scripts/batch_init.sh task.json --projects_root=./projects
+
+# 僅生成項目結構，不執行打包
+./scripts/batch_init.sh tasks.csv --dry-run
+```
+
+**CSV 格式示例**：
+```csv
+包名,架構,版本,下載地址
+com.example.app,x86_64,1.0.0,https://example.com/app.tar.zst
+```
+
+**JSON 格式示例**：
+```json
+{
+  "global": {
+    "projects_root": "./projects"
+  },
+  "tasks": [
+    {
+      "pkgName": "com.example.app",
+      "arch": "x86_64",
+      "orig_version": "1.0.0",
+      "src_url": "https://example.com/app.tar.zst"
+    }
+  ]
+}
+```
+
+批量初始化會為每個任務創建 `CI_ll_<pkgName>` 目錄，包含：
+- `linglong.yaml` - 玲瓏打包配置文件
+- `pak_linyaps.sh` - 自動化打包腳本
+- `scripts/` - 輔助腳本目錄
+- `config/` - 配置文件目錄（含白名單配置）
+- `templates/files_res/` - 資源文件目錄
+
 ## 工作流程
 
 ### Step 1: 驗證並解壓 tar 歸檔

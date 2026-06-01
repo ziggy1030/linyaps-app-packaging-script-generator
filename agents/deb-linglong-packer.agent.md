@@ -254,18 +254,58 @@ done
 1. **解析输入参数**
    - 如果是目录：扫描目录下的 deb 文件和 tar 归档文件（`.tar.zst`、`.tar.gz`、`.tar.xz`、`.tar.bz2`、`.tgz`）
    - 如果是CSV文件：读取配置信息
+   - 如果是JSON文件：读取任务配置
 
-2. **加载CSV配置**（如果存在）
-   ```csv
-   package_name,deb_path,architecture,base,runtime,push
+2. **批量初始化模式**（推荐）
+   使用 `batch_init.sh` 脚本批量创建项目：
+   ```bash
+   # CSV 格式批量初始化
+   ./scripts/batch_init.sh tasks.csv --projects_root=./projects
+
+   # JSON 格式批量初始化
+   ./scripts/batch_init.sh task.json --projects_root=./projects
+
+   # 仅生成项目结构，不执行打包
+   ./scripts/batch_init.sh tasks.csv --dry-run
    ```
-   - 检测CSV值完整性
-   - 使用CSV值填充配置
 
-3. **创建任务列表**
-   - 为每个包（deb 或 tar）创建处理任务
-   - 根据文件类型标记处理模式（deb 模式 / tar 模式）
-   - 显示预计处理数量
+   **CSV 格式**：
+   ```csv
+   包名,架构,版本,下载地址
+   com.example.app,x86_64,1.0.0,https://example.com/app.deb
+   ```
+
+   **JSON 格式**：
+   ```json
+   {
+     "global": {
+       "projects_root": "./projects"
+     },
+     "tasks": [
+       {
+         "pkgName": "com.example.app",
+         "arch": "x86_64",
+         "orig_version": "1.0.0",
+         "src_url": "https://example.com/app.deb"
+       }
+     ]
+   }
+   ```
+
+3. **单包处理模式**
+   对于单个包，使用以下流程：
+
+   a. **加载CSV配置**（如果存在）
+      ```csv
+      package_name,deb_path,architecture,base,runtime,push
+      ```
+      - 检测CSV值完整性
+      - 使用CSV值填充配置
+
+   b. **创建任务列表**
+      - 为每个包（deb 或 tar）创建处理任务
+      - 根据文件类型标记处理模式（deb 模式 / tar 模式）
+      - 显示预计处理数量
 
 ### Phase 2: 单包处理流程
 
