@@ -49,11 +49,13 @@ def scan_resources(data_path: str) -> dict:
         if 'applications' in str(f):
             resources['desktop_files'].append(str(f))
     
-    # 扫描图标
+    # 扫描图标（分开收集 icons 和 pixmaps，便于后续处理）
     for ext in ['*.png', '*.svg', '*.svgz', '*.jpg', '*.xpm']:
         for f in data_dir.rglob(ext):
-            if 'icons' in str(f) or 'pixmaps' in str(f):
+            if 'icons' in str(f):
                 resources['icons'].append(str(f))
+            elif 'pixmaps' in str(f):
+                resources['pixmaps'].append(str(f))
     
     # 扫描appdata/metainfo
     for f in data_dir.rglob('*.appdata.xml'):
@@ -86,11 +88,13 @@ files_res/
 └── share/
     ├── applications/           # desktop文件
     │   └── com.example.app.desktop
-    ├── icons/                  # 图标
+    ├── icons/                  # 图标（lycaps 只接受此目录）
     │   └── hicolor/
-    │       ├── 48x48/apps/
-    │       ├── 256x256/apps/
-    │       └── scalable/apps/
+    │       ├── 48x48/apps/     # ← 来自 pixmaps 的 xpm 图标
+    │       ├── 128x128/apps/   # ← 来自 pixmaps 的 png 图标（默认尺寸）
+    │       ├── 256x256/apps/   # ← 来自 pixmaps 的 png 图标
+    │       ├── scalable/apps/  # ← 来自 pixmaps 的 svg 图标
+    │       └── ...
     ├── appdata/                # 应用数据
     │   └── com.example.app.appdata.xml
     ├── mime/                   # MIME类型
@@ -99,7 +103,7 @@ files_res/
     │   └── completions/
     ├── zsh/                    # Zsh补全
     │   └── vendor-completions/
-    └── pixmaps/                # 像素图
+    └── pixmaps/                # 像素图（向后兼容保留，图标已同步到 icons/hicolor）
 ```
 
 ### 3. 复制资源文件
@@ -120,13 +124,42 @@ def copy_resources(resources: dict, target_dir: str, package_id: str):
         # 修改desktop文件中的Icon和Exec路径
         fix_desktop_file(dst, package_id)
     
-    # 复制图标
+    # 复制图标（来自 icons/ 目录，保持相对路径结构）
     for src in resources['icons']:
         # 保持相对路径结构
         rel_path = extract_icon_relative_path(src)
         dst = share_dir / 'icons' / rel_path
         dst.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(src, dst)
+    
+    # 处理 pixmaps 图标：迁移到 icons/hicolor/
+    # linyaps 只接受 icons/hicolor 作为图标目录
+    # 当 icons/ 为空而 pixmaps/ 不为空时，pixmaps 是唯一的图标来源，必须迁移到 hicolor
+    # 当 icons/ 不为空时，pixmaps 仍需迁移到 hicolor 作为补充（避免 desktop Icon= 引用找不到图标）
+    if resources['pixmaps']:
+        icons_hicolor = share_dir / 'icons' / 'hicolor'
+        icons_hicolor.mkdir(parents=True, exist_ok=True)
+        
+        for src in resources['pixmaps']:
+            src_path = Path(src)
+            # 根据图标格式确定目标目录
+            if src_path.suffix == '.svg':
+                target_dir = icons_hicolor / 'scalable' / 'apps'
+            elif src_path.suffix == '.xpm':
+                target_dir = icons_hicolor / '48x48' / 'apps'  # xpm 默认 48x48
+            else:
+                # PNG/JPG：尝试从文件名推断尺寸，无法推断时默认 128x128
+                size = detect_icon_size_from_filename(src_path.name)
+                target_dir = icons_hicolor / size / 'apps'
+            
+            target_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, target_dir / src_path.name)
+        
+        # 向后兼容：同时保留 pixmaps 目录
+        pixmaps_dir = share_dir / 'pixmaps'
+        pixmaps_dir.mkdir(parents=True, exist_ok=True)
+        for src in resources['pixmaps']:
+            shutil.copy2(src, pixmaps_dir / Path(src).name)
     
     # 复制appdata
     for src in resources['appdata']:
@@ -135,6 +168,37 @@ def copy_resources(resources: dict, target_dir: str, package_id: str):
         shutil.copy2(src, dst)
     
     # 复制其他资源...
+```
+
+#### 3.1 辅助函数：从文件名推断图标尺寸
+
+```python
+import re
+
+def detect_icon_size_from_filename(filename: str) -> str:
+    """从文件名推断图标尺寸，用于 pixmaps→hicolor 迁移时确定目标目录。
+    
+    推断优先级：
+    1. 匹配 NxN 格式（如 256x256、48x48）
+    2. 匹配单独数字（如 48、128）
+    3. 无法推断时返回默认值 128x128
+    
+    示例：
+        "trae-cn-256x256.png" → "256x256"
+        "app-icon-48.png"     → "48x48"
+        "myapp.png"           → "128x128"（默认）
+    """
+    # 优先匹配 NxN 格式
+    size_match = re.search(r'(\d{2,3})x(\d{2,3})', filename)
+    if size_match:
+        return f"{size_match.group(1)}x{size_match.group(2)}"
+    # 其次匹配单独数字
+    size_match = re.search(r'(\d{2,3})(?=\D|$)', filename)
+    if size_match:
+        s = size_match.group(1)
+        return f"{s}x{s}"
+    # 默认 128x128
+    return "128x128"
 ```
 
 ### 4. 修复desktop文件
@@ -218,7 +282,7 @@ python3 common-data-verify.py <files_res_dir> --json --output report.json
 |--------|--------------|------|
 | `usr/share/applications/*.desktop` | `share/applications/` | desktop文件 |
 | `usr/share/icons/hicolor/*/apps/*` | `share/icons/hicolor/*/apps/` | 图标 |
-| `usr/share/pixmaps/*` | `share/pixmaps/` | 像素图 |
+| `usr/share/pixmaps/*` | `share/icons/hicolor/<size>/apps/` | 像素图（自动迁移到 hicolor） |
 | `usr/share/metainfo/*.xml` | `share/appdata/` | 应用数据 |
 | `usr/share/mime/packages/*` | `share/mime/packages/` | MIME定义 |
 | `usr/share/bash-completion/completions/*` | `share/bash-completion/completions/` | Bash补全 |
@@ -231,6 +295,7 @@ python3 common-data-verify.py <files_res_dir> --json --output report.json
 3. appdata文件重命名为 `{package_id}.appdata.xml`
 4. 验证失败时记录问题，等待修复skill处理
 5. 保留原始文件权限和符号链接
+6. **pixmaps 图标自动迁移到 `icons/hicolor/`**：lycaps 只接受 `icons/hicolor` 作为图标目录。来自 `pixmaps/` 的图标会根据格式自动放置到 `hicolor/<size>/apps/`（SVG→`scalable`，XPM→`48x48`，PNG/JPG→从文件名推断尺寸，默认 `128x128`），同时保留 `pixmaps/` 目录向后兼容
 
 ## ⚠️ Agent 注意事项
 
