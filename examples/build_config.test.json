@@ -1,0 +1,15 @@
+{
+  "_comment": "tar-linyaps 構建配置文件 — 分組結構，main 為必填，optional 為可選",
+
+  "main": {
+    "src_url": "https://share.cicd.getdeepin.org/ziggy-pool/Postman-without-desktop-without-icons.tar.zst",
+    "app_name": "Postman",
+    "package_id": "com.postman.postman",
+    "description": "Faster, easier API development.",
+    "icon_url": "https://share.cicd.getdeepin.org/ziggy-pool/icon.png"
+  },
+
+  "optional": {
+    "app_version": "12.11.5",
+  }
+}

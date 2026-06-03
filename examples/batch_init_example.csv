@@ -1,0 +1,4 @@
+包名,架构,版本,下载地址
+com.visualstudio.code,x86_64,1.85.0,https://update.code.visualstudio.com/1.85.0/linux-deb-x64/stable
+org.mozilla.firefox,x86_64,151.0.2,https://ftp.mozilla.org/pub/firefox/releases/151.0.2/linux-x86_64/en-US/firefox-151.0.2.tar.bz2
+com.jetbrains.intellij-idea,x86_64,2024.1.1,https://download.jetbrains.com/idea/ideaIU-2024.1.1.tar.gz

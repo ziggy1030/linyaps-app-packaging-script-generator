@@ -1,0 +1,25 @@
+{
+  "global": {
+    "projects_root": "./projects"
+  },
+  "tasks": [
+    {
+      "pkgName": "com.visualstudio.code",
+      "arch": "x86_64",
+      "orig_version": "1.85.0",
+      "src_url": "https://update.code.visualstudio.com/1.85.0/linux-deb-x64/stable"
+    },
+    {
+      "pkgName": "org.mozilla.firefox",
+      "arch": "x86_64",
+      "orig_version": "151.0.2",
+      "src_url": "https://ftp.mozilla.org/pub/firefox/releases/151.0.2/linux-x86_64/en-US/firefox-151.0.2.tar.bz2"
+    },
+    {
+      "pkgName": "com.jetbrains.intellij-idea",
+      "arch": "x86_64",
+      "orig_version": "2024.1.1",
+      "src_url": "https://download.jetbrains.com/idea/ideaIU-2024.1.1.tar.gz"
+    }
+  ]
+}
