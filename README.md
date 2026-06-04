@@ -17,7 +17,9 @@ common-data-verify/
 │       ├── linglong-project-gen/SKILL.md # 工程生成
 │       ├── resource-collector/SKILL.md   # 资源收集
 │       ├── compat-testing/SKILL.md       # 兼容性测试
-│       └── linglong-fix/SKILL.md         # 问题修复
+│       ├── linglong-fix/SKILL.md         # 问题修复
+│       ├── tar-linyaps/SKILL.md          # Tar包转换
+│       └── appimage-linyaps/SKILL.md     # AppImage转换
 ├── config/
 │   └── packages.csv                      # 批量配置文件
 ├── deb_to_linglong.py                    # Deb解析工具
@@ -70,6 +72,16 @@ common-data-verify/
 /linglong-fix CI_ll_com.example.app
 ```
 
+#### Tar包转换
+```
+/tar-linyaps /path/to/package.tar.gz
+```
+
+#### AppImage转换
+```
+/appimage-linyaps /path/to/application.AppImage
+```
+
 ## CSV配置格式
 
 ```csv
@@ -95,6 +107,50 @@ package_name,deb_path,architecture,base,runtime,push
 com.visualstudio.code,/path/to/code_amd64.deb,x86_64,org.deepin.base/23.1.0,org.deepin.runtime.dtk/23.1.0,true
 com.visualstudio.code,/path/to/code_arm64.deb,aarch64,org.deepin.base/23.1.0,org.deepin.runtime.dtk/23.1.0,true
 ```
+
+## AppImage转换
+
+`appimage-linyaps` 技能用于将 AppImage 应用程序转换为玲珑包格式。
+
+### 功能特性
+- **AppImage 解压**：使用 `--appimage-extract` 安全解压 AppImage 文件
+- **元数据提取**：从 desktop 文件和文件名中智能提取应用信息
+- **Exec 命令解析**：准确提取 Exec 命令，支持多种 AppImage 变体
+- **Wrapper 机制**：保留 AppImage 原始目录结构，通过 wrapper 脚本执行
+
+### 使用示例
+
+#### 基本使用
+```
+/appimage-linyaps /path/to/application.AppImage
+```
+
+#### 使用配置文件
+```json
+{
+  "main": {
+    "appimage_file": "/path/to/application.AppImage",
+    "app_name": "My Application",
+    "package_id": "com.example.myapp",
+    "description": "A sample application converted from AppImage"
+  },
+  "optional": {
+    "app_version": "1.0.0.0",
+    "base_id": "org.deepin.base",
+    "base_version": "25.2.2",
+    "runtime_id": "org.deepin.runtime.dtk",
+    "runtime_version": "25.2.2",
+    "linyaps_arch": "x86_64",
+    "output_dir": "./output"
+  }
+}
+```
+
+### 详细文档
+- [使用指南](docs/appimage-linyaps.README.md)
+- [设计文档](appimage-linyaps.design.md)
+- [实现方案](skills/appimage-linyaps/IMPLEMENTATION.md)
+- [实现流程](skills/appimage-linyaps/IMPLEMENTATION_FLOW.md)
 
 ## 批量初始化
 
