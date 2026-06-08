@@ -129,7 +129,7 @@ com.visualstudio.code,/path/to/code_arm64.deb,aarch64,org.deepin.base/23.1.0,org
 ```json
 {
   "main": {
-    "src_url": "/path/to/application.AppImage",
+    "appimage_file": "/path/to/application.AppImage",
     "app_name": "My Application",
     "package_id": "com.example.myapp",
     "description": "A sample application converted from AppImage"

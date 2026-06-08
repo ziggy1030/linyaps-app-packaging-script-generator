@@ -63,8 +63,10 @@ exec_value=$(echo "${exec_value}" | sed 's/\${HERE}\//\.\//g')
 # 提取第一個參數（binary name 或路徑）
 exec_cmd=$(echo "${exec_value}" | awk '{print $1}')
 
-# 移除開頭的 ./（來自 ${HERE}/ 替換），保留相對路徑
-exec_cmd="${exec_cmd#./}"
+# 如果是路徑，提取文件名
+if [[ "${exec_cmd}" == */* ]]; then
+    exec_cmd=$(basename "${exec_cmd}")
+fi
 
 # 驗證提取結果
 if [ -z "${exec_cmd}" ]; then
@@ -73,39 +75,30 @@ if [ -z "${exec_cmd}" ]; then
     exit 1
 fi
 
-# 檢查命令是否在 squashfs-root 中存在，並返回相對於 squashfs-root 的完整路徑
-# 如果 exec_cmd 本身已是包含 / 的路徑（如 usr/bin/krita），直接驗證
-# 否則嘗試多種可能的前綴，找到第一個存在的路徑
-resolved_path="${exec_cmd}"
-if [[ "${exec_cmd}" != */* ]]; then
-    # basename 形式，需要在常見目錄中搜索
-    possible_paths=(
-        "${exec_cmd}"
-        "usr/bin/${exec_cmd}"
-        "bin/${exec_cmd}"
-    )
-    found=false
-    for rel_path in "${possible_paths[@]}"; do
-        if [ -e "${squashfs_root}/${rel_path}" ]; then
-            resolved_path="${rel_path}"
-            found=true
-            break
-        fi
+# 檢查命令是否在 squashfs-root 中存在
+# 嘗試多種可能的路徑
+possible_paths=(
+    "${squashfs_root}/${exec_cmd}"
+    "${squashfs_root}/usr/bin/${exec_cmd}"
+    "${squashfs_root}/bin/${exec_cmd}"
+)
+
+found=false
+for path in "${possible_paths[@]}"; do
+    if [ -e "${path}" ]; then
+        found=true
+        break
+    fi
+done
+
+if [ "${found}" = false ]; then
+    echo "警告: 提取的命令 '${exec_cmd}' 在 squashfs-root 中未找到" >&2
+    echo "  嘗試的路徑:" >&2
+    for path in "${possible_paths[@]}"; do
+        echo "    - ${path}" >&2
     done
-    if [ "${found}" = false ]; then
-        echo "警告: 提取的命令 '${exec_cmd}' 在 squashfs-root 中未找到" >&2
-        echo "  嘗試的路徑:" >&2
-        for rel_path in "${possible_paths[@]}"; do
-            echo "    - ${squashfs_root}/${rel_path}" >&2
-        done
-        # 不退出，繼續返回結果（可能是符號連結或特殊情況）
-    fi
-else
-    # 已是相對路徑（如 usr/bin/krita），直接驗證
-    if [ ! -e "${squashfs_root}/${resolved_path}" ]; then
-        echo "警告: 提取的路徑 '${resolved_path}' 在 squashfs-root 中不存在" >&2
-    fi
+    # 不退出，繼續返回結果（可能是符號連結或特殊情況）
 fi
 
-echo "${resolved_path}"
+echo "${exec_cmd}"
 exit 0

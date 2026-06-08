@@ -3,14 +3,14 @@
 # parse_appimage_metadata.sh - AppImage 元數據提取腳本
 #=============================================================================
 # 功能：從 AppImage 文件和 desktop 文件中提取元數據
-# 用法：parse_appimage_metadata.sh <src_path> <squashfs_root_dir>
+# 用法：parse_appimage_metadata.sh <appimage_file> <squashfs_root_dir>
 #
 # 輸出：key=value 格式的元數據，可直接 eval 載入
 # 提取的元數據：
 #   - app_name: 應用名稱（從 desktop Name= 提取）
 #   - package_id: 玲瓏包 ID（從 desktop 文件名推導）
 #   - description: 應用描述（從 desktop Comment= 提取）
-#   - binary_name: Exec 命令（從 desktop Exec= 提取）
+#   - exec_command: Exec 命令（從 desktop Exec= 提取）
 #   - icon_name: 圖標名稱（從 desktop Icon= 提取）
 #   - version: 版本號（從文件名正則提取）
 #=============================================================================
@@ -19,15 +19,15 @@ set -euo pipefail
 
 # 參數驗證
 if [ $# -lt 2 ]; then
-    echo "用法: $0 <src_path> <squashfs_root_dir>" >&2
+    echo "用法: $0 <appimage_file> <squashfs_root_dir>" >&2
     exit 1
 fi
 
-src_path="$1"
+appimage_file="$1"
 squashfs_root="$2"
 
-if [ ! -f "${src_path}" ]; then
-    echo "錯誤: AppImage 文件不存在: ${src_path}" >&2
+if [ ! -f "${appimage_file}" ]; then
+    echo "錯誤: AppImage 文件不存在: ${appimage_file}" >&2
     exit 1
 fi
 
@@ -51,7 +51,7 @@ fi
 
 # 如果 Name= 為空，從文件名推導
 if [ -z "${app_name}" ]; then
-    filename=$(basename "${src_path}")
+    filename=$(basename "${appimage_file}")
     # 移除 .AppImage 後綴和版本號
     app_name=$(echo "${filename}" | sed -E 's/[-_]?[vV]?[0-9]+\.[0-9]+(\.[0-9]+)*([-_][0-9]+)?[-_]?//;s/\.AppImage$//;s/\.appimage$//')
     # 如果還是空，使用文件名
@@ -88,19 +88,19 @@ fi
 
 # 如果 Comment= 為空，使用默認描述
 if [ -z "${description}" ]; then
-    description="Converted from AppImage: $(basename "${src_path}"))"
+    description="Converted from AppImage: $(basename "${appimage_file}")"
 fi
 
-# 提取 binary_name（從 desktop Exec=）
-binary_name=""
+# 提取 exec_command（從 desktop Exec=）
+exec_command=""
 if [ -n "${desktop_file}" ]; then
     exec_line=$(grep "^Exec=" "${desktop_file}" 2>/dev/null | head -1)
     if [ -n "${exec_line}" ]; then
-        binary_name="${exec_line#Exec=}"
+        exec_command="${exec_line#Exec=}"
         # 移除引號
-        binary_name=$(echo "${binary_name}" | sed "s/^['\"]//;s/['\"]$")
+        exec_command=$(echo "${exec_command}" | sed "s/^['\"]//;s/['\"]$//")
         # 移除參數佔位符
-        binary_name=$(echo "${binary_name}" | sed 's/\s*%[UuFfickDdNn]//g')
+        exec_command=$(echo "${exec_command}" | sed 's/\s*%[UuFfickDdNn]//g')
     fi
 fi
 
@@ -117,7 +117,7 @@ fi
 
 # 提取版本號（從文件名正則提取）
 version=""
-filename=$(basename "${src_path}")
+filename=$(basename "${appimage_file}")
 
 # 嘗試多種版本號模式
 # 模式1: -v1.2.3 或 -V1.2.3
@@ -151,7 +151,7 @@ version="${version_parts[0]}.${version_parts[1]}.${version_parts[2]}.${version_p
 echo "app_name=${app_name}"
 echo "package_id=${package_id}"
 echo "description=${description}"
-echo "binary_name=${binary_name}"
+echo "exec_command=${exec_command}"
 echo "icon_name=${icon_name}"
 echo "version=${version}"
 

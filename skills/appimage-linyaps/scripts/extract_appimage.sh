@@ -3,7 +3,7 @@
 # extract_appimage.sh - AppImage 解壓腳本
 #=============================================================================
 # 功能：解壓 AppImage 文件到指定目錄
-# 用法：extract_appimage.sh <src_path> <output_dir>
+# 用法：extract_appimage.sh <appimage_path> <output_dir>
 #
 # 解壓方式：chmod +x + --appimage-extract
 # 輸出：在 output_dir 下生成 squashfs-root/ 目錄
@@ -13,27 +13,27 @@ set -euo pipefail
 
 # 參數驗證
 if [ $# -lt 2 ]; then
-    echo "用法: $0 <src_path> <output_dir>" >&2
+    echo "用法: $0 <appimage_path> <output_dir>" >&2
     exit 1
 fi
 
-src_path="$1"
+appimage_path="$1"
 output_dir="$2"
 
 # 驗證輸入文件
-if [ ! -f "${src_path}" ]; then
-    echo "錯誤: AppImage 文件不存在: ${src_path}" >&2
+if [ ! -f "${appimage_path}" ]; then
+    echo "錯誤: AppImage 文件不存在: ${appimage_path}" >&2
     exit 1
 fi
 
 # 驗證文件格式（必須是 ELF 或 AppImage）
-file_output=$(file "${src_path}")
+file_output=$(file "${appimage_path}")
 case "${file_output}" in
     *"ELF"*|*"AppImage"*)
         # 有效的 AppImage 文件
         ;;
     *)
-        echo "錯誤: 文件不是有效的 AppImage: ${src_path}" >&2
+        echo "錯誤: 文件不是有效的 AppImage: ${appimage_path}" >&2
         echo "  file 輸出: ${file_output}" >&2
         exit 1
         ;;
@@ -45,10 +45,10 @@ mkdir -p "${output_dir}"
 # 解壓 AppImage
 # 使用 --appimage-extract 而非 --appimage-extract-and-run
 # 這樣只解壓不運行，更安全
-echo "正在解壓 AppImage: ${src_path}"
+echo "正在解壓 AppImage: ${appimage_path}"
 cd "${output_dir}"
-chmod +x "${src_path}"
-"${src_path}" --appimage-extract > /dev/null 2>&1
+chmod +x "${appimage_path}"
+"${appimage_path}" --appimage-extract > /dev/null 2>&1
 
 # 驗證解壓結果
 if [ ! -d "${output_dir}/squashfs-root" ]; then
