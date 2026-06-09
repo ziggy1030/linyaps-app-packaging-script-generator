@@ -538,8 +538,9 @@ exec "${script_dir}/../uTools/utools" "$@"
 1. **禁止手动设置 command 字段**：linglong.yaml 模板中的 `${command}` 为占位符
 2. **禁止手动设置 base/runtime 字段**：模板中 `base: ""`, `runtime: ""` 为空占位符，由 `build_pak()` 透過 sed 延遲注入
 3. **禁止修改 desktop 文件的 Exec 字段**：由 wrapper 机制在构建时自动处理
-4. **不要提前优化**：wrapper 机制需要原始的 Exec 路径来正确提取 binary_name
-5. **信任 pak_linyaps.sh**：构建脚本会自动处理所有路径转换和 wrapper 创建
+4. **禁止手动替换 version 字段**：模板中 `version: "${ll_version}"` 和 `package.version: ${ll_version}` **必须保持为变量**，**不能**替换为 `"1.0"`、`"0.0.1"` 等绝对值。version 只能由 `pak_linyaps.sh` 在构建时通过 `envsubst` 自动替换
+5. **不要提前优化**：wrapper 机制需要原始的 Exec 路径来正确提取 binary_name
+6. **信任 pak_linyaps.sh**：构建脚本会自动处理所有路径转换和 wrapper 创建
 
 ## 输出目录结构
 

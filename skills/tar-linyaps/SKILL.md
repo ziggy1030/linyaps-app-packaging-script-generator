@@ -419,6 +419,11 @@ build: |
 8. **🚫 禁止干預 ll-builder 構建**：SKILL 層面（Step 1-7）只負責資源收集和工程準備，不得在 SKILL 執行過程中調用 `ll-builder` 或修改構建流程
 9. **pak_linyaps.sh 是完整構建腳本**：用戶執行 `bash pak_linyaps.sh --src_path ... --package_id ...` 後，腳本自動完成從解壓到 .layer 導出的全部流程，無需手動干預
 10. **構建環境隔離**：`build_tmp_dir` 作為構建沙箱，所有中間產物在其中生成，構建完成後可自動清理
+11. **🚫 禁止手動填入 version（新增）**：
+    - `linglong.yaml` 模板中 `version: "${ll_version}"` 和 `package.version: ${ll_version}` **必須保持為變量**
+    - **絕對禁止**在生成工程時將 version 替換為 `"1.0"`、`"0.0.1"` 等絕對值
+    - version **只能**由 `pak_linyaps.sh` 在構建時透過 `envsubst` 自動替換
+    - 若 LLM 錯誤地將 version 寫死，`validate_linglong_yaml.py` 將在兼容性測試中報錯
 
 ---
 

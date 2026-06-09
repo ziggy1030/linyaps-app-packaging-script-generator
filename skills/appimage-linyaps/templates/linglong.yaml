@@ -1,4 +1,4 @@
-version: "1.0"
+version: "${ll_version}"
 
 package:
   id: ${package_id}

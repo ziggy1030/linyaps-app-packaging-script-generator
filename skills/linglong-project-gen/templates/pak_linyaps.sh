@@ -525,6 +525,17 @@ build_dir_init() {
 	# 注意：模板文件位于 templates/ 目录下
 	cat "${project_root}/templates/linglong.yaml" |
 		envsubst >"${build_tmp_dir}/linglong.yaml"
+
+	# 检测模板中的 version 字段是否仍为变量（防止 LLM 错误替换为绝对值）
+	# 正常模板中 version 应为 ${ll_version}，envsubst 后会替换为真实版本号
+	# 若 LLM 已将 version 写死（如 version: "1.0"），则 envsubst 无法正确替换
+	if ! grep -q '\${ll_version}' "${project_root}/templates/linglong.yaml" 2>/dev/null; then
+		echo "错误: linglong.yaml 模板中未找到 \${ll_version} 变量！" >&2
+		echo "  version 字段已被 LLM 错误替换为绝对值，envsubst 将无法正确替换" >&2
+		echo "  请检查: ${project_root}/templates/linglong.yaml" >&2
+		echo "  两个 version 字段（顶层 version 和 package.version）都必须保持为 \${ll_version}" >&2
+		exit 1
+	fi
 }
 
 # 檢查 ELF 二進制的架構兼容性

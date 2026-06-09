@@ -532,6 +532,17 @@ build_dir_init() {
 	# 注意：模板文件位於 templates/ 目錄下
 	cat "${project_root}/templates/linglong.yaml" |
 		envsubst >"${build_tmp_dir}/linglong.yaml"
+
+	# 檢測模板中的 version 字段是否仍為變量（防止 LLM 錯誤替換為絕對值）
+	# 正常模板中 version 應為 ${ll_version}，envsubst 後會替換為真實版本號
+	# 若 LLM 已將 version 寫死（如 version: "1.0"），則 envsubst 無法正確替換
+	if ! grep -q '\${ll_version}' "${project_root}/templates/linglong.yaml" 2>/dev/null; then
+		echo "錯誤: linglong.yaml 模板中未找到 \${ll_version} 變量！" >&2
+		echo "  version 字段已被 LLM 錯誤替換為絕對值，envsubst 將無法正確替換" >&2
+		echo "  請檢查: ${project_root}/templates/linglong.yaml" >&2
+		echo "  兩個 version 字段（頂層 version 和 package.version）都必須保持為 \${ll_version}" >&2
+		exit 1
+	fi
 }
 
 # 主構建流程（與 deb 版一致的完整構建流程）

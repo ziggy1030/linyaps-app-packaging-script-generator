@@ -43,6 +43,13 @@ permission:
 - **DO NOT** 手动设置 linglong.yaml 的 command 字段（由 pak_linyaps.sh 的 wrapper 机制处理）
 - **LET** pak_linyaps.sh 脚本通过 wrapper 机制自动处理 Exec 和 command
 
+### Version 字段约束（重要！）
+
+- **DO NOT** 在生成 linglong.yaml 时将 version 字段替换为绝对值（如 `version: "1.0"`、`version: "0.0.1"`）
+- **REQUIRE** linglong.yaml 中**两个** version 字段（顶层 `version` 和 `package.version`）**必须**保持为 `${ll_version}` 变量
+- **LET** version 的替换**只能**由 `pak_linyaps.sh` 在构建时通过 `envsubst` 自动完成
+- **WARNING** 如果 LLM 错误地将 version 替换为绝对值，`validate_linglong_yaml.py` 将在兼容性测试阶段报错
+
 ### pak_linyaps.sh 生成约束（重要！）
 
 #### deb 版（linglong-project-gen）

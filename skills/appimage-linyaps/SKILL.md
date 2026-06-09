@@ -435,6 +435,11 @@ AppImage 版本使用特殊的 wrapper 機制，借鑒 ll-pica 的 AppRun 方案
     - 保持 squashfs-root 原始目錄結構
     - 使用 `resolve_exec_command.sh` 解析 Exec 命令
     - 使用 `parse_appimage_metadata.sh` 提取元數據
+11. **🚫 禁止手動填入 version（新增）**：
+    - `linglong.yaml` 模板中 `version: "${ll_version}"` 和 `package.version: ${ll_version}` **必須保持為變量**
+    - **絕對禁止**在生成工程時將 version 替換為 `"1.0"`、`"0.0.1"` 等絕對值
+    - version **只能**由 `pak_linyaps.sh` 在構建時透過 `envsubst` 自動替換
+    - 若 LLM 錯誤地將 version 寫死，`validate_linglong_yaml.py` 將在兼容性測試中報錯
 
 ---
 

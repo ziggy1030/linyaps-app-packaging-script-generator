@@ -169,6 +169,13 @@ class LinglongYamlValidator:
     # Fields that must not contain unresolved variable references
     NO_VAR_FIELDS = {"package.id", "package.name", "package.description"}
 
+    # Fields that MUST contain unresolved variable references (will be substituted
+    # by pak_linyaps.sh at build time via envsubst).
+    # If these fields have concrete values (e.g., version: "1.0"), the LLM has
+    # wrongly replaced the variable placeholder. This will cause build failure
+    # because envsubst will not find the variable to substitute.
+    MUST_BE_VAR_FIELDS = {"version", "package.version"}
+
     def _contains_unresolved_vars(self, value: str) -> bool:
         """Check if a string contains unresolved envsubst variable references.
 
@@ -212,6 +219,20 @@ class LinglongYamlValidator:
                     f"the variable. Suggested fix: replace the variable placeholder with "
                     f"the actual value (e.g., use concrete id/name/description instead of "
                     f"${'{'}var{'}'}).",
+                )
+            elif (
+                field_path in self.MUST_BE_VAR_FIELDS
+                and isinstance(value, str)
+                and not self._contains_unresolved_vars(value)
+                and not (isinstance(value, str) and value.strip() == "")
+            ):
+                result.add_fail(
+                    field_path,
+                    f"Required field '{field_path}' has been hardcoded to a concrete value: "
+                    f"'{value.strip()}'. It must remain as a variable reference (e.g., "
+                    f"${{ll_version}}) because pak_linyaps.sh will substitute it at "
+                    f"build time via envsubst. If the LLM replaced the variable placeholder, "
+                    f"please restore it to ${{ll_version}}.",
                 )
             else:
                 result.add_pass(field_path, f"Field '{field_path}' exists")
