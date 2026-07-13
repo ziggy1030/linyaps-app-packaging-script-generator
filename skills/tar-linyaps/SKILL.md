@@ -145,9 +145,14 @@ tar -xf "${tar_path}" -C "${extract_dir}"
 - `meson.build`
 - `setup.py`
 
-**若為源碼包**：終止並提示用戶這是源碼包，不適用此工具。
+**判斷結果輸出**（不終止流程，由上層 workflow 決策）：
 
-**若為二進制包**：繼續 Step 3。
+- **若為源碼包**：
+  - 設置輸出標記 `source_package_detected=true`
+  - 記錄檢測到的源碼文件類型（如 CMakeLists.txt / Makefile / meson.build 等）
+  - **不終止**，由上層 workflow 將任務指派給源碼初始化智能體（`linyaps-src-init-*`）
+
+- **若為二進制包**：設置輸出標記 `source_package_detected=false`，繼續 Step 3
 
 ### Step 3: 收集用戶參數
 
@@ -325,6 +330,7 @@ fi
 - `command` 欄位占位符由 `pak_linyaps.sh` 在構建時自動處理
 - `base`/`runtime` 欄位為空佔位符 `""`，由 `build_pak()` 透過 `sed` 延遲注入
 - **禁止**在資源收集階段手動修改 desktop 文件的 `Exec=` 欄位
+- **輸出**：`source_package_detected` 標記（`true`/`false`），若為 `true` 則額外輸出 `source_file_type` 欄位標示檢測到的源碼文件類型
 
 ---
 
@@ -332,7 +338,7 @@ fi
 
 | 階段 | 負責方 | 操作 |
 |------|--------|------|
-| Step 2: 源碼包檢測 | tar-linyaps skill | 解壓後立即檢測，源碼包則終止 |
+| Step 2: 源碼包檢測 | tar-linyaps skill | 解壓後立即檢測，源碼包則標記 `source_package_detected=true` 並輸出檢測結果，由 workflow 決定是否指派源碼初始化智能體 |
 | Step 4: Desktop 掃描 | tar-linyaps skill | 提取 Exec= binary name（優先級高於自動掃描） |
 | Step 5: 自動掃描 | tar-linyaps skill | 僅在無 desktop Exec 時掃描可執行檔 |
 | Step 4/5: 資源收集 | tar-linyaps skill | 只修復 Icon 路徑，**不修改** Exec 欄位 |

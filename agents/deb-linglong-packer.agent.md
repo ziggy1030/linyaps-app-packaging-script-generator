@@ -447,7 +447,9 @@ b. **创建任务列表**
 ##### Step 1: Tar 分析与工程生成
 调用 `tar-linyaps` skill（整合了分析与工程生成）：
 - 验证 tar 文件格式并解压
-- 检测源码包（发现 CMakeLists.txt/Makefile 等时终止）
+- 检测源码包（发现 CMakeLists.txt/Makefile 等时）
+  - 二進制包 → 掃描 desktop 文件、生成工程目錄，繼續 Step 2
+  - 源碼包 → 標記為 `src_pending`，調用指派 SKILL 轉交 `linyaps-src-init-1` 做源码初始化，跳過後續步驟
 - 扫描 desktop 文件提取 binary name 和 icon 路径
 - 若无 desktop Exec，使用 `scan_executables.sh` 自动扫描可执行文件
 - 按 XDG 规范处理 icon 目录结构和 desktop Icon= 字段
