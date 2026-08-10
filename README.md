@@ -1,6 +1,6 @@
 # linyaps-app-packaging-script-generator
 
-将 Debian 软件包（.deb）、含二进制的 tar 压缩包及 AppImage 批量转换为玲珑（Linyaps）便捷打包脚本，实现应用打包适配的自动化。
+将 Debian 软件包（.deb）、含二进制的 tar 压缩包及 AppImage 批量转换为如意玲珑（Linyaps）便捷打包脚本，实现应用打包适配的自动化。
 
 > 本文档为项目文档，开箱即用的快速上手示例见 `NewToHere.md`。
 
